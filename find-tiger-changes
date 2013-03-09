@@ -35,6 +35,40 @@ sub out {
 	print "stroke\n";
 }
 
+sub diff {
+	my $tlid = $_[0];
+
+	my @old = split(/ /, $old{$tlid});
+	my @new = split(/ /, $new{$tlid});
+
+	my $changed = 0;
+
+	if ($#old == $#new) {
+		my $i;
+		for ($i = 0; $i <= $#old; $i++) {
+			my ($lat1, $lon1) = split(/,/, $old[$i]);
+			my ($lat2, $lon2) = split(/,/, $new[$i]);
+
+			if (abs($lat1 - $lat2) > $slop || abs($lon1 - $lon2) > $slop) {
+				$changed = 1;
+				last;
+			}
+		}
+	} else {
+		$changed = 1;
+	}
+
+	if ($changed) {
+		print "0 0 .6 setrgbcolor ";
+		out($new{$tlid});
+		print ".7 .7 1 setrgbcolor ";
+		out($old{$tlid});
+	} else {
+		print ".7 .7 1 setrgbcolor ";
+		out($old{$tlid});
+	}
+}
+
 @files = <../../tiger/2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
 
 open(IN, "unzip -p $files[0] TGR$county.RT1 |");
@@ -180,8 +214,7 @@ for ($a = POSIX::floor($minlat); $a <= POSIX::ceil($maxlat); $a++) {
 					}
 
 					if ($found >= 0) {
-						print "0 0 1 setrgbcolor ";
-						out($new{$tlid});
+						diff($tlid);
 
 						for ($i = 0; $i < $#tlat; $i++) {
 							$skip[$found + $i] = 1;
@@ -203,8 +236,7 @@ for ($a = POSIX::floor($minlat); $a <= POSIX::ceil($maxlat); $a++) {
 					}
 
 					if ($found >= 0) {
-						print "0 0 1 setrgbcolor ";
-						out($new{$tlid});
+						diff($tlid);
 
 						for ($i = 0; $i < $#tlat; $i++) {
 							$skip[$found + $i] = 1;
@@ -214,7 +246,7 @@ for ($a = POSIX::floor($minlat); $a <= POSIX::ceil($maxlat); $a++) {
 					}
 				}
 
-				print "0 1 0 setrgbcolor ";
+				print "0 .6 0 setrgbcolor ";
 
 				$within = 0;
 				for ($i = 0; $i <= $#vlat; $i++) {
@@ -243,7 +275,7 @@ for ($a = POSIX::floor($minlat); $a <= POSIX::ceil($maxlat); $a++) {
 
 				print "\n";
 			} else {
-				print "0 1 0 setrgbcolor ";
+				print ".7 1 .7 setrgbcolor ";
 				out($vec);
 			}
 		}
