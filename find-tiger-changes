@@ -1,13 +1,41 @@
 #!/usr/bin/perl
 
+use POSIX;
+
 $county = "18153";
 
-$minlat = 38.901590;
-$minlon = -87.680069;
-$maxlat = 39.259463;
-$maxlon = -87.219047;
+$minlat = 360;
+$minlon = 360;
+$maxlat = -360;
+$maxlon = -360;
 
-@files = <2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
+$pi = 4 * atan2(1, 1);
+$foot = .00000274;
+$slop = 2 * $foot;
+
+print "1 1 0 setrgbcolor\n";
+print "0 setlinewidth\n";
+
+sub out {
+	my @pts = split(/ /, $_[0]);
+	my $i;
+	for ($i = 0; $i <= $#pts; $i++) {
+		my ($lat, $lon) = split(/,/, $pts[$i]);
+		printf("%.3f %.3f ",
+			($lon - $minlon) * 612 / ($maxlon - $minlon),
+			($lat - $minlat) * 612 / ($maxlat - $minlat));
+
+		if ($i == 0) {
+			print "moveto ";
+		} else {
+			print "lineto ";
+		}
+	}
+
+	print "stroke\n";
+}
+
+@files = <../../tiger/2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
 
 open(IN, "unzip -p $files[0] TGR$county.RT1 |");
 while (<IN>) {
@@ -15,10 +43,10 @@ while (<IN>) {
 	$tlid = substr($_, 5, 10);
 	$tlid =~ s/^ *//;
 
-	$startlon{$tlid} = sprintf("%.6lf", substr($_, 190, 10) / 1000000);
-	$startlat{$tlid} = sprintf("%.6lf", substr($_, 200, 9) / 1000000);
-	$endlon{$tlid} = sprintf("%.6lf", substr($_, 209, 10) / 1000000);
-	$endlat{$tlid} = sprintf("%.6lf", substr($_, 219, 9) / 1000000);
+	$startlon{$tlid} = substr($_, 190, 10) / 1000000;
+	$startlat{$tlid} = substr($_, 200, 9) / 1000000;
+	$endlon{$tlid} = substr($_, 209, 10) / 1000000;
+	$endlat{$tlid} = substr($_, 219, 9) / 1000000;
 }
 close(IN);
 
@@ -48,29 +76,7 @@ for $tlid (keys(%startlat)) {
 	push @{$lon{$tlid}}, $endlon{$tlid};
 }
 
-print "1 1 0 setrgbcolor\n";
-print "0 setlinewidth\n";
-
-sub out {
-	my @pts = split(/ /, $_[0]);
-	my $i;
-	for ($i = 0; $i <= $#pts; $i++) {
-		my ($lat, $lon) = split(/,/, $pts[$i]);
-		printf("%.3f %.3f ",
-			($lon - $minlon) * 612 / ($maxlon - $minlon),
-			($lat - $minlat) * 612 / ($maxlat - $minlat));
-
-		if ($i == 0) {
-			print "moveto ";
-		} else {
-			print "lineto ";
-		}
-	}
-
-	print "stroke\n";
-}
-
-open(IN, "java shpcat 2013/www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip |");
+open(IN, "java shpcat ../../tiger/2013/www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip |");
 while (<IN>) {
 	chomp;
 
@@ -92,17 +98,48 @@ while (<IN>) {
 	for $p (@points) {
 		($lon, $lat) = split(/,/, $p);
 		$new{$tlid} .= "$lat,$lon ";
+
+		if ($lat < $minlat) {
+			$minlat = $lat;
+		}
+		if ($lon < $minlon) {
+			$minlon = $lon;
+		}
+		if ($lat > $maxlat) {
+			$maxlat = $lat;
+		}
+		if ($lon > $maxlon) {
+			$maxlon = $lon;
+		}
 	}
 	$new{$tlid} =~ s/ $//;
+}
 
+$rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
+
+if (($maxlon - $minlon) * $rat > $maxlat - $minlat) {
+	$dimension = ($maxlon - $minlon) * $rat;
+} else {
+	$dimension = $maxlat - $minlat;
+}
+
+$lat = ($maxlat + $minlat) / 2;
+$lon = ($maxlon + $minlon) / 2;
+
+$minlat = $lat - $dimension / 2;
+$minlon = $lon - ($dimension / $rat / 2);
+$maxlat = $lat + $dimension / 2;
+$maxlon = $lon + ($dimension / $rat / 2);
+
+for $tlid (keys(%new)) {
 	if ($old{$tlid} eq "") {
 		out($new{$tlid});
 	}
 }
 
-for ($a = 38; $a <= 39; $a++) {
-	for ($o = -87; $o <= -87; $o++) {
-		open(IN, "../osm/osm/osm.$a,$o");
+for ($a = POSIX::floor($minlat); $a <= POSIX::ceil($maxlat); $a++) {
+	for ($o = POSIX::floor($minlon); $o <= POSIX::ceil($maxlon); $o++) {
+		open(IN, "../../osm/osm/osm.$a,$o");
 
 		while (<IN>) {
 			chomp;
@@ -120,8 +157,6 @@ for ($a = 38; $a <= 39; $a++) {
 				push @vlon, $lon;
 			}
 
-			next if (/;tiger:tlid=([^;]*)/ && ! /Sullivan, IN/);
-
 			if (/;tiger:tlid=([^;]*)/) {
 				@tlids = split(/:/, $1);
 
@@ -136,8 +171,8 @@ for ($a = 38; $a <= 39; $a++) {
 					OUTER:
 					for ($i = 0; $i <= $#vlat; $i++) {
 						for ($j = 0; $j <= $#tlat; $j++) {
-							next OUTER if abs($vlat[$i + $j] - $tlat[$j]) > .000005;
-							next OUTER if abs($vlon[$i + $j] - $tlon[$j]) > .000005;
+							next OUTER if abs($vlat[$i + $j] - $tlat[$j]) > $slop;
+							next OUTER if abs($vlon[$i + $j] - $tlon[$j]) > $slop;
 						}
 
 						$found = $i;
@@ -159,8 +194,8 @@ for ($a = 38; $a <= 39; $a++) {
 					OUTER:
 					for ($i = 0; $i <= $#vlat; $i++) {
 						for ($j = 0; $j <= $#tlat; $j++) {
-							next OUTER if abs($vlat[$i + $j] - $tlat[$#tlat - $j]) > .000005;
-							next OUTER if abs($vlon[$i + $j] - $tlon[$#tlat - $j]) > .000005;
+							next OUTER if abs($vlat[$i + $j] - $tlat[$#tlat - $j]) > $slop;
+							next OUTER if abs($vlon[$i + $j] - $tlon[$#tlat - $j]) > $slop;
 						}
 
 						$found = $i;
