@@ -2,7 +2,7 @@
 
 use POSIX;
 
-$county = "18153";
+$county = "18167";  # Vigo County, Terre Haute, IN
 
 $minlat = 360;
 $minlon = 360;
@@ -13,61 +13,7 @@ $pi = 4 * atan2(1, 1);
 $foot = .00000274;
 $slop = 2 * $foot;
 
-print "1 1 0 setrgbcolor\n";
 print "0 setlinewidth\n";
-
-sub out {
-	my @pts = split(/ /, $_[0]);
-	my $i;
-	for ($i = 0; $i <= $#pts; $i++) {
-		my ($lat, $lon) = split(/,/, $pts[$i]);
-		printf("%.3f %.3f ",
-			($lon - $minlon) * 612 / ($maxlon - $minlon),
-			($lat - $minlat) * 612 / ($maxlat - $minlat));
-
-		if ($i == 0) {
-			print "moveto ";
-		} else {
-			print "lineto ";
-		}
-	}
-
-	print "stroke\n";
-}
-
-sub diff {
-	my $tlid = $_[0];
-
-	my @old = split(/ /, $old{$tlid});
-	my @new = split(/ /, $new{$tlid});
-
-	my $changed = 0;
-
-	if ($#old == $#new) {
-		my $i;
-		for ($i = 0; $i <= $#old; $i++) {
-			my ($lat1, $lon1) = split(/,/, $old[$i]);
-			my ($lat2, $lon2) = split(/,/, $new[$i]);
-
-			if (abs($lat1 - $lat2) > $slop || abs($lon1 - $lon2) > $slop) {
-				$changed = 1;
-				last;
-			}
-		}
-	} else {
-		$changed = 1;
-	}
-
-	if ($changed) {
-		print "0 0 .6 setrgbcolor ";
-		out($new{$tlid});
-		print ".7 .7 1 setrgbcolor ";
-		out($old{$tlid});
-	} else {
-		print ".7 .7 1 setrgbcolor ";
-		out($old{$tlid});
-	}
-}
 
 @files = <../../tiger/2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
 
@@ -95,19 +41,19 @@ while (<IN>) {
 		$lat = substr($_, $i + 10, 9) / 1000000;
 
 		if ($lat != 0) {
-			push @{$lat{$tlid}}, $lat;
-			push @{$lon{$tlid}}, $lon;
+			push @{$oldlat{$tlid}}, $lat;
+			push @{$oldlon{$tlid}}, $lon;
 		}
 	}
 }
 close(IN);
 
 for $tlid (keys(%startlat)) {
-	unshift @{$lat{$tlid}}, $startlat{$tlid};
-	unshift @{$lon{$tlid}}, $startlon{$tlid};
+	unshift @{$oldlat{$tlid}}, $startlat{$tlid};
+	unshift @{$oldlon{$tlid}}, $startlon{$tlid};
 
-	push @{$lat{$tlid}}, $endlat{$tlid};
-	push @{$lon{$tlid}}, $endlon{$tlid};
+	push @{$oldlat{$tlid}}, $endlat{$tlid};
+	push @{$oldlon{$tlid}}, $endlon{$tlid};
 }
 
 open(IN, "java shpcat ../../tiger/2013/www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip |");
@@ -119,19 +65,12 @@ while (<IN>) {
 	next unless $tlid =~ /^[0-9]/;
 
 	s/.*polyline //;
-
 	@points = split(/ /, $_);
-
-	@lat = @{$lat{$tlid}};
-	@lon = @{$lon{$tlid}};
-	for ($i = 0; $i <= $#lat; $i++) {
-		$old{$tlid} .= "$lat[$i],$lon[$i] ";
-	}
-	$old{$tlid} =~ s/ $//;
 
 	for $p (@points) {
 		($lon, $lat) = split(/,/, $p);
-		$new{$tlid} .= "$lat,$lon ";
+		push @{$newlat{$tlid}}, $lat;
+		push @{$newlon{$tlid}}, $lon;
 
 		if ($lat < $minlat) {
 			$minlat = $lat;
@@ -146,7 +85,6 @@ while (<IN>) {
 			$maxlon = $lon;
 		}
 	}
-	$new{$tlid} =~ s/ $//;
 }
 
 $rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
@@ -165,118 +103,259 @@ $minlon = $lon - ($dimension / $rat / 2);
 $maxlat = $lat + $dimension / 2;
 $maxlon = $lon + ($dimension / $rat / 2);
 
-for $tlid (keys(%new)) {
-	if ($old{$tlid} eq "") {
-		out($new{$tlid});
+print "1 1 0 setrgbcolor\n";
+
+for $tlid (keys(%newlat)) {
+	@olat = @{$oldlat{$tlid}};
+
+	if ($#olat < 0) {
+		@a = @{$newlat{$tlid}};
+		@o = @{$newlon{$tlid}};
+
+		for ($i = 0; $i <= $#a; $i++) {
+			printf("%.3f %.3f %s ",
+				($o[$i] - $minlon) * 612 / ($maxlon - $minlon),
+				($a[$i] - $minlat) * 612 / ($maxlat - $minlat),
+				$i == 0 ? "moveto" : "lineto");
+		}
+
+		print "stroke\n";
 	}
 }
 
-for ($a = POSIX::floor($minlat); $a <= POSIX::ceil($maxlat); $a++) {
-	for ($o = POSIX::floor($minlon); $o <= POSIX::ceil($maxlon); $o++) {
-		open(IN, "../../osm/osm/osm.$a,$o");
+open(IN, "bzcat ../../osm/terre-haute.osm.bz2 |");
+while (<IN>) {
+	if (/<node id="([^"]*).*lat="([^"]*).*lon="([^"]*)/) {
+		$nodelat{$1} = $2;
+		$nodelon{$1} = $3;
+	}
+
+	if (/<way id="([^"]*)/) {
+		$way = $1;
+		$theway = $_;
+		@nodes = ();
+		@tlids = ();
 
 		while (<IN>) {
-			chomp;
+			$theway .= $_;
+			last if (/<\/way/);
 
-			$vec = $_;
-			$vec =~ s/ ;.*//;
-			@vec = split(/ /, $vec);
-
-			@vlat = ();
-			@vlon = ();
-			@skip = ();
-			for $p (@vec) {
-				($lat, $lon) = split(/,/, $p);
-				push @vlat, $lat;
-				push @vlon, $lon;
+			if (/<nd ref="([^"]*)/) {
+				push @nodes, $1;
+				$noderefs{$1}++;
 			}
 
-			if (/;tiger:tlid=([^;]*)/) {
-				@tlids = split(/:/, $1);
+			if (/<tag k="tiger:tlid" v="([^"]*)/) {
+				@tlids = split(/[ ;:]+/, $1);
+			}
+		}
 
-				TLID:
-				for $tlid (@tlids) {
-					@tlat = @{$lat{$tlid}};
-					@tlon = @{$lon{$tlid}};
+		@{$nodes{$way}} = @nodes;
+		@{$tlids{$way}} = @tlids;
+	}
+}
 
-					next if $#tlat < 1;
+for $way (keys(%nodes)) {
+	@nodes = @{$nodes{$way}};
+	@tlids = @{$tlids{$way}};
 
-					$found = -1;
-					OUTER:
-					for ($i = 0; $i <= $#vlat; $i++) {
-						for ($j = 0; $j <= $#tlat; $j++) {
-							next OUTER if abs($vlat[$i + $j] - $tlat[$j]) > $slop;
-							next OUTER if abs($vlon[$i + $j] - $tlon[$j]) > $slop;
-						}
+	$changed = 0;
 
-						$found = $i;
-						last OUTER;
-					}
+	TLID:
+	for $tlid (@tlids) {
+		@tlat = @{$oldlat{$tlid}};
+		@tlon = @{$oldlon{$tlid}};
 
-					if ($found >= 0) {
-						diff($tlid);
+		@nlat = @{$newlat{$tlid}};
+		@nlon = @{$newlon{$tlid}};
 
-						for ($i = 0; $i < $#tlat; $i++) {
-							$skip[$found + $i] = 1;
-						}
+		next if $#tlat < 1 || $#nlat < 1;
 
-						next TLID;
-					}
+		for ($pass = 0; $pass < 2; $pass++) {
+			$found = -1;
+			OUTER:
+			for ($i = 0; $i <= $#nodes; $i++) {
+				for ($j = 0; $j <= $#tlat; $j++) {
+					next OUTER if abs($nodelat{$nodes[$i + $j]} - $tlat[$j]) > $slop;
+					next OUTER if abs($nodelon{$nodes[$i + $j]} - $tlon[$j]) > $slop;
+				}
 
-					$found = -1;
-					OUTER:
-					for ($i = 0; $i <= $#vlat; $i++) {
-						for ($j = 0; $j <= $#tlat; $j++) {
-							next OUTER if abs($vlat[$i + $j] - $tlat[$#tlat - $j]) > $slop;
-							next OUTER if abs($vlon[$i + $j] - $tlon[$#tlat - $j]) > $slop;
-						}
+				$found = $i;
+				last OUTER;
+			}
 
-						$found = $i;
-						last OUTER;
-					}
+			if ($found != -1) {
+				$changed = 1;
 
-					if ($found >= 0) {
-						diff($tlid);
-
-						for ($i = 0; $i < $#tlat; $i++) {
-							$skip[$found + $i] = 1;
-						}
+				for ($i = 1; $i <= $tlat - 1; $i++) {
+					if ($noderefs{$nodes[$found + $i]} != 1) {
+						print STDERR "Intermediate node $nodes[$found + $i] referenced by ";
+						print STDERR "$noderefs{$nodes[$found + $i]} ways\n";
 
 						next TLID;
 					}
 				}
 
-				print "0 .6 0 setrgbcolor ";
+				if ($#tlat == $#nlat) {
+					for ($i = 0; $i <= $#tlat; $i++) {
+						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
+						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
 
+						if (abs($nodelat{$nodes[$found + $i]} - $newnodelat{$nodes[$found + $i]}) < $slop) {
+							$minor{$nodes[$found + $i]} = 1;
+						}
+						if (abs($nodelon{$nodes[$found + $i]} - $newnodelon{$nodes[$found + $i]}) < $slop) {
+							$minor{$nodes[$found + $i]} = 1;
+						}
+					}
+				} elsif ($#tlat > $#nlat) {
+					# Use as many old nodes as necessary - 1 for new positions
+
+					for ($i = 0; $i <= $#nlat - 1; $i++) {
+						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
+						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
+					}
+
+					# Remove no longer used nodes
+
+					for ($i = $#nlat; $i <= $#tlat - 1; $i++) {
+						$newnodelat{$nodes[$found + $i]} = 0;
+						$newnodelon{$nodes[$found + $i]} = 0;
+					}
+
+					# Last old node gets last new position
+
+					$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
+					$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
+				} else {
+					# As many old nodes as available - 1 moved to new positions
+
+					for ($i = 0; $i <= $#tlat - 1; $i++) {
+						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
+						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
+					}
+
+					# Last node moved to new position
+
+					$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
+					$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
+
+					# Make new nodes for in between
+
+					for ($i = $#tlat; $i < $#nlat; $i++) {
+						$gensym--;
+
+						$newnodelat{$gensym} = $nlat[$i];
+						$newnodelon{$gensym} = $nlon[$i];
+
+						splice @nodes, $found + $i, 0, $gensym;
+					}
+				}
+
+				next TLID;
+			}
+
+			@tlat = reverse(@tlat);
+			@tlon = reverse(@tlon);
+
+			@nlat = reverse(@nlat);
+			@nlon = reverse(@nlon);
+		}
+	}
+
+	@{$nodes{$way}} = @nodes;
+}
+
+for $way (keys(%nodes)) {
+	@nodes = @{$nodes{$way}};
+	@tlids = @{$tlids{$way}};
+
+	if ($#tlids < 0) {
+		# New ways, only in OSM
+
+		print ".7 1 .7 setrgbcolor ";
+
+		$within = 0;
+		for ($i = 0; $i <= $#nodes; $i++) {
+			if ($nodelon{$nodes[$i]} == 0) {
 				$within = 0;
-				for ($i = 0; $i <= $#vlat; $i++) {
-					printf("%.3f %.3f ",
-						($vlon[$i] - $minlon) * 612 / ($maxlon - $minlon),
-						($vlat[$i] - $minlat) * 612 / ($maxlat - $minlat));
+			} else {
+				printf("%.3f %.3f %s ",
+					($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
+					($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
+					$within ? "lineto" : "moveto");
+				$within = 1;
+			}
+		}
 
-					if ($within) {
-						print "lineto ";
-					} else {
-						print "moveto ";
-						$within = 1;
+		print "stroke\n";
+	} else {
+		for ($i = 0; $i < $#nodes; $i++) {
+			if ($newnodelat{$nodes[$i]} == 0 && $newnodelat{$nodes[$i + 1]} == 0) {
+				# Not matched, so edited in OSM (or maybe just out of OSM extract bounds)
+
+				if ($nodelat{$nodes[$i]} != 0 && $nodelat{$nodes[$i + 1]} != 0) {
+					print "0 .6 0 setrgbcolor ";
+					printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
+						($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
+						($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
+						($nodelon{$nodes[$i + 1]} - $minlon) * 612 / ($maxlon - $minlon),
+						($nodelat{$nodes[$i + 1]} - $minlat) * 612 / ($maxlat - $minlat));
+				}
+			} else {
+				# Old TIGER (either matched and moved, or preserved)
+
+				if ($nodelat{$nodes[$i]} != 0) {
+					for ($j = $i + 1; $j <= $#nodes; $j++) {
+						last if ($nodelat{$nodes[$j]} != 0);
 					}
 
-					if ($skip[$i]) {
-						if ($within) {
-							print "stroke ";
-							$within = 0;
+					if ($nodelat{$nodes[$j]} != 0) {
+						print ".7 .7 1 setrgbcolor ";
+						printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
+							($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
+							($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
+							($nodelon{$nodes[$j]} - $minlon) * 612 / ($maxlon - $minlon),
+							($nodelat{$nodes[$j]} - $minlat) * 612 / ($maxlat - $minlat));
+					}
+				}
+
+				# Matched and moved
+
+				if ($newnodelat{$nodes[$i]} != 0) {
+					for ($j = $i + 1; $j <= $#nodes; $j++) {
+						last if ($newnodelat{$nodes[$j]} != 0);
+					}
+
+					if ($newnodelat{$nodes[$j]} != 0) {
+						$lat1a = $nodelat{$nodes[$i]};
+						$lon1a = $nodelon{$nodes[$i]};
+
+						$lat1b = $newnodelat{$nodes[$i]};
+						$lon1b = $newnodelon{$nodes[$i]};
+
+						$lat2a = $nodelat{$nodes[$j]};
+						$lon2a = $nodelon{$nodes[$j]};
+
+						$lat2b = $newnodelat{$nodes[$j]};
+						$lon2b = $newnodelon{$nodes[$j]};
+
+						$lat1d = abs($lat1a - $lat1b);
+						$lon1d = abs($lon1a - $lon1b);
+
+						$lat2d = abs($lat2a - $lat2b);
+						$lon2d = abs($lon2a - $lon2b);
+
+						if ($lat1d > $slop || $lat2d > $slop || $lon1d > $slop || $lat2d > $slop) {
+							print "0 0 .6 setrgbcolor ";
+							printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
+								($newnodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
+								($newnodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
+								($newnodelon{$nodes[$j]} - $minlon) * 612 / ($maxlon - $minlon),
+								($newnodelat{$nodes[$j]} - $minlat) * 612 / ($maxlat - $minlat));
 						}
 					}
 				}
-
-				if ($within) {
-					print "stroke";
-				}
-
-				print "\n";
-			} else {
-				print ".7 1 .7 setrgbcolor ";
-				out($vec);
 			}
 		}
 	}
