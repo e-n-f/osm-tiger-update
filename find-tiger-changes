@@ -196,16 +196,20 @@ for $way (keys(%nodes)) {
 					}
 				}
 
+				for ($i = 0; $i <= $#tlat; $i++) {
+					$matched{$nodes[$found + $i]} = 1;
+				}
+
 				if ($#tlat == $#nlat) {
 					for ($i = 0; $i <= $#tlat; $i++) {
 						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
 						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
 
-						if (abs($nodelat{$nodes[$found + $i]} - $newnodelat{$nodes[$found + $i]}) < $slop) {
-							$minor{$nodes[$found + $i]} = 1;
+						if (abs($nodelat{$nodes[$found + $i]} - $newnodelat{$nodes[$found + $i]}) > $slop) {
+							$moved{$nodes[$found + $i]} = 1;
 						}
-						if (abs($nodelon{$nodes[$found + $i]} - $newnodelon{$nodes[$found + $i]}) < $slop) {
-							$minor{$nodes[$found + $i]} = 1;
+						if (abs($nodelon{$nodes[$found + $i]} - $newnodelon{$nodes[$found + $i]}) > $slop) {
+							$moved{$nodes[$found + $i]} = 1;
 						}
 					}
 				} elsif ($#tlat > $#nlat) {
@@ -214,31 +218,36 @@ for $way (keys(%nodes)) {
 					for ($i = 0; $i <= $#nlat - 1; $i++) {
 						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
 						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
+						$moved{$nodes[$found + $i]} = 1;
 					}
 
 					# Remove no longer used nodes
 
 					for ($i = $#nlat; $i <= $#tlat - 1; $i++) {
-						$newnodelat{$nodes[$found + $i]} = 0;
-						$newnodelon{$nodes[$found + $i]} = 0;
+						$newnodelat{$nodes[$found + $i]} = $newnodelat{$nodes[$found + $i - 1]}; # XXX
+						$newnodelon{$nodes[$found + $i]} = $newnodelon{$nodes[$found + $i - 1]};
+						$moved{$nodes[$found + $i]} = 1;
 					}
 
 					# Last old node gets last new position
 
 					$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
 					$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
+					$moved{$nodes[$found + $#tlon]} = 1;
 				} else {
 					# As many old nodes as available - 1 moved to new positions
 
 					for ($i = 0; $i <= $#tlat - 1; $i++) {
 						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
 						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
+						$moved{$nodes[$found + $i]} = 1;
 					}
 
 					# Last node moved to new position
 
 					$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
 					$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
+					$moved{$nodes[$found + $#tlon]} = 1;
 
 					# Make new nodes for in between
 
@@ -247,6 +256,11 @@ for $way (keys(%nodes)) {
 
 						$newnodelat{$gensym} = $nlat[$i];
 						$newnodelon{$gensym} = $nlon[$i];
+						$matched{$gensym} = 1;
+						$moved{$gensym} = 1;
+
+						$nodelat{$gensym} = $nodelat{$nodes[$found + $i - 1]};
+						$nodelon{$gensym} = $nodelon{$nodes[$found + $i - 1]};
 
 						splice @nodes, $found + $i, 0, $gensym;
 					}
@@ -291,7 +305,7 @@ for $way (keys(%nodes)) {
 		print "stroke\n";
 	} else {
 		for ($i = 0; $i < $#nodes; $i++) {
-			if ($newnodelat{$nodes[$i]} == 0 && $newnodelat{$nodes[$i + 1]} == 0) {
+			if (!$matched{$nodes[$i]} && !$matched{$nodes[$i + 1]}) {
 				# Not matched, so edited in OSM (or maybe just out of OSM extract bounds)
 
 				if ($nodelat{$nodes[$i]} != 0 && $nodelat{$nodes[$i + 1]} != 0) {
@@ -305,55 +319,42 @@ for $way (keys(%nodes)) {
 			} else {
 				# Old TIGER (either matched and moved, or preserved)
 
-				if ($nodelat{$nodes[$i]} != 0) {
-					for ($j = $i + 1; $j <= $#nodes; $j++) {
-						last if ($nodelat{$nodes[$j]} != 0);
-					}
-
-					if ($nodelat{$nodes[$j]} != 0) {
-						print ".7 .7 1 setrgbcolor ";
-						printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
-							($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
-							($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
-							($nodelon{$nodes[$j]} - $minlon) * 612 / ($maxlon - $minlon),
-							($nodelat{$nodes[$j]} - $minlat) * 612 / ($maxlat - $minlat));
-					}
+				if ($nodelat{$nodes[$i]} != 0 && $nodelat{$nodes[$i + 1]} != 0) {
+					print ".7 .7 1 setrgbcolor ";
+					printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
+						($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
+						($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
+						($nodelon{$nodes[$i + 1]} - $minlon) * 612 / ($maxlon - $minlon),
+						($nodelat{$nodes[$i + 1]} - $minlat) * 612 / ($maxlat - $minlat));
 				}
 
-				# Matched and moved
+				if ($moved{$nodes[$i]} || $moved{$nodes[$i + 1]}) {
+					# One or both ends moved in new TIGER
 
-				if ($newnodelat{$nodes[$i]} != 0) {
-					for ($j = $i + 1; $j <= $#nodes; $j++) {
-						last if ($newnodelat{$nodes[$j]} != 0);
+					print "0 0 .6 setrgbcolor ";
+
+					if ($moved{$nodes[$i]}) {
+						$startlat = $newnodelat{$nodes[$i]};
+						$startlon = $newnodelon{$nodes[$i]};
+					} else {
+						$startlat = $nodelat{$nodes[$i]};
+						$startlon = $nodelon{$nodes[$i]};
 					}
 
-					if ($newnodelat{$nodes[$j]} != 0) {
-						$lat1a = $nodelat{$nodes[$i]};
-						$lon1a = $nodelon{$nodes[$i]};
+					if ($moved{$nodes[$i + 1]}) {
+						$endlat = $newnodelat{$nodes[$i + 1]};
+						$endlon = $newnodelon{$nodes[$i + 1]};
+					} else {
+						$endlat = $nodelat{$nodes[$i + 1]};
+						$endlon = $nodelon{$nodes[$i + 1]};
+					}
 
-						$lat1b = $newnodelat{$nodes[$i]};
-						$lon1b = $newnodelon{$nodes[$i]};
-
-						$lat2a = $nodelat{$nodes[$j]};
-						$lon2a = $nodelon{$nodes[$j]};
-
-						$lat2b = $newnodelat{$nodes[$j]};
-						$lon2b = $newnodelon{$nodes[$j]};
-
-						$lat1d = abs($lat1a - $lat1b);
-						$lon1d = abs($lon1a - $lon1b);
-
-						$lat2d = abs($lat2a - $lat2b);
-						$lon2d = abs($lon2a - $lon2b);
-
-						if ($lat1d > $slop || $lat2d > $slop || $lon1d > $slop || $lat2d > $slop) {
-							print "0 0 .6 setrgbcolor ";
-							printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
-								($newnodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
-								($newnodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
-								($newnodelon{$nodes[$j]} - $minlon) * 612 / ($maxlon - $minlon),
-								($newnodelat{$nodes[$j]} - $minlat) * 612 / ($maxlat - $minlat));
-						}
+					if ($startlat != 0 && $endlat != 0) {
+						printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
+							($startlon - $minlon) * 612 / ($maxlon - $minlon),
+							($startlat - $minlat) * 612 / ($maxlat - $minlat),
+							($endlon - $minlon) * 612 / ($maxlon - $minlon),
+							($endlat - $minlat) * 612 / ($maxlat - $minlat));
 					}
 				}
 			}
