@@ -87,6 +87,8 @@ while (<IN>) {
 	}
 }
 
+$countybounds = "$minlon,$minlat,$maxlon,$maxlat";
+
 $rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
 
 if (($maxlon - $minlon) * $rat > $maxlat - $minlat) {
@@ -123,7 +125,7 @@ for $tlid (keys(%newlat)) {
 	}
 }
 
-open(IN, "bzcat ../../osm/terre-haute.osm.bz2 |");
+open(IN, "./osmconvert $ENV{'HOME'}/north-america-latest.osm.pbf -b=$countybounds |");
 while (<IN>) {
 	if (/<node id="([^"]*).*lat="([^"]*).*lon="([^"]*)/) {
 		$nodelat{$1} = $2;
