@@ -23,19 +23,6 @@ print "0 setlinewidth\n";
 for $county (@counties) {
 	@files = <../../tiger/2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
 
-	open(IN, "unzip -p $files[0] TGR$county.RT1 |");
-	while (<IN>) {
-		chomp;
-		$tlid = substr($_, 5, 10);
-		$tlid =~ s/^ *//;
-
-		$startlon{$tlid} = substr($_, 190, 10) / 1000000;
-		$startlat{$tlid} = substr($_, 200, 9) / 1000000;
-		$endlon{$tlid} = substr($_, 209, 10) / 1000000;
-		$endlat{$tlid} = substr($_, 219, 9) / 1000000;
-	}
-	close(IN);
-
 	open(IN, "unzip -p $files[0] TGR$county.RT2 |");
 	while (<IN>) {
 		chomp;
@@ -53,14 +40,25 @@ for $county (@counties) {
 		}
 	}
 	close(IN);
-}
 
-for $tlid (keys(%startlat)) {
-	unshift @{$oldlat{$tlid}}, $startlat{$tlid};
-	unshift @{$oldlon{$tlid}}, $startlon{$tlid};
+	open(IN, "unzip -p $files[0] TGR$county.RT1 |");
+	while (<IN>) {
+		chomp;
+		$tlid = substr($_, 5, 10);
+		$tlid =~ s/^ *//;
 
-	push @{$oldlat{$tlid}}, $endlat{$tlid};
-	push @{$oldlon{$tlid}}, $endlon{$tlid};
+		$startlon = substr($_, 190, 10) / 1000000;
+		$startlat = substr($_, 200, 9) / 1000000;
+		$endlon = substr($_, 209, 10) / 1000000;
+		$endlat = substr($_, 219, 9) / 1000000;
+
+		unshift @{$oldlat{$tlid}}, $startlat;
+		unshift @{$oldlon{$tlid}}, $startlon;
+
+		push @{$oldlat{$tlid}}, $endlat;
+		push @{$oldlon{$tlid}}, $endlon;
+	}
+	close(IN);
 }
 
 for $county (@counties) {
