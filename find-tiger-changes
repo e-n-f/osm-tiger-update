@@ -34,8 +34,8 @@ for $county (@counties) {
 			$lat = substr($_, $i + 10, 9) / 1000000;
 
 			if ($lat != 0) {
-				push @{$oldlat{$tlid}}, $lat;
-				push @{$oldlon{$tlid}}, $lon;
+				push @{$oldlat{$county}{$tlid}}, $lat;
+				push @{$oldlon{$county}{$tlid}}, $lon;
 			}
 		}
 	}
@@ -52,11 +52,11 @@ for $county (@counties) {
 		$endlon = substr($_, 209, 10) / 1000000;
 		$endlat = substr($_, 219, 9) / 1000000;
 
-		unshift @{$oldlat{$tlid}}, $startlat;
-		unshift @{$oldlon{$tlid}}, $startlon;
+		unshift @{$oldlat{$county}{$tlid}}, $startlat;
+		unshift @{$oldlon{$county}{$tlid}}, $startlon;
 
-		push @{$oldlat{$tlid}}, $endlat;
-		push @{$oldlon{$tlid}}, $endlon;
+		push @{$oldlat{$county}{$tlid}}, $endlat;
+		push @{$oldlon{$county}{$tlid}}, $endlon;
 	}
 	close(IN);
 }
@@ -66,7 +66,7 @@ for $county (@counties) {
 	while (<IN>) {
 		chomp;
 
-		($state, $county, $tlid) = split(/\|/);
+		($state, $cty, $tlid) = split(/\|/);
 		$tlid =~ s/^ *//;
 		next unless $tlid =~ /^[0-9]/;
 
@@ -75,8 +75,8 @@ for $county (@counties) {
 
 		for $p (@points) {
 			($lon, $lat) = split(/,/, $p);
-			push @{$newlat{$tlid}}, $lat;
-			push @{$newlon{$tlid}}, $lon;
+			push @{$newlat{$county}{$tlid}}, $lat;
+			push @{$newlon{$county}{$tlid}}, $lon;
 
 			if ($lat < $minlat) {
 				$minlat = $lat;
@@ -114,21 +114,23 @@ $maxlon = $lon + ($dimension / $rat / 2);
 
 print "1 1 0 setrgbcolor\n";
 
-for $tlid (keys(%newlat)) {
-	@olat = @{$oldlat{$tlid}};
+for $county (@counties) {
+	for $tlid (keys(%{$newlat{$county}})) {
+		@olat = @{$oldlat{$county}{$tlid}};
 
-	if ($#olat < 0) {
-		@a = @{$newlat{$tlid}};
-		@o = @{$newlon{$tlid}};
+		if ($#olat < 0) {
+			@a = @{$newlat{$county}{$tlid}};
+			@o = @{$newlon{$county}{$tlid}};
 
-		for ($i = 0; $i <= $#a; $i++) {
-			printf("%.3f %.3f %s ",
-				($o[$i] - $minlon) * 612 / ($maxlon - $minlon),
-				($a[$i] - $minlat) * 612 / ($maxlat - $minlat),
-				$i == 0 ? "moveto" : "lineto");
+			for ($i = 0; $i <= $#a; $i++) {
+				printf("%.3f %.3f %s ",
+					($o[$i] - $minlon) * 612 / ($maxlon - $minlon),
+					($a[$i] - $minlat) * 612 / ($maxlat - $minlat),
+					$i == 0 ? "moveto" : "lineto");
+			}
+
+			print "stroke\n";
 		}
-
-		print "stroke\n";
 	}
 }
 
@@ -172,117 +174,119 @@ for $way (keys(%nodes)) {
 
 	TLID:
 	for $tlid (@tlids) {
-		@tlat = @{$oldlat{$tlid}};
-		@tlon = @{$oldlon{$tlid}};
+		for $county (@counties) {
+			@tlat = @{$oldlat{$county}{$tlid}};
+			@tlon = @{$oldlon{$county}{$tlid}};
 
-		@nlat = @{$newlat{$tlid}};
-		@nlon = @{$newlon{$tlid}};
+			@nlat = @{$newlat{$county}{$tlid}};
+			@nlon = @{$newlon{$county}{$tlid}};
 
-		next if $#tlat < 1 || $#nlat < 1;
+			next if $#tlat < 1 || $#nlat < 1;
 
-		for ($pass = 0; $pass < 2; $pass++) {
-			$found = -1;
-			OUTER:
-			for ($i = 0; $i <= $#nodes; $i++) {
-				for ($j = 0; $j <= $#tlat; $j++) {
-					next OUTER if abs($nodelat{$nodes[$i + $j]} - $tlat[$j]) > $slop;
-					next OUTER if abs($nodelon{$nodes[$i + $j]} - $tlon[$j]) > $slop;
-				}
-
-				$found = $i;
-				last OUTER;
-			}
-
-			if ($found != -1) {
-				$changed = 1;
-
-				for ($i = 1; $i <= $tlat - 1; $i++) {
-					if ($noderefs{$nodes[$found + $i]} != 1) {
-						print STDERR "Intermediate node $nodes[$found + $i] referenced by ";
-						print STDERR "$noderefs{$nodes[$found + $i]} ways\n";
-
-						next TLID;
+			for ($pass = 0; $pass < 2; $pass++) {
+				$found = -1;
+				OUTER:
+				for ($i = 0; $i <= $#nodes; $i++) {
+					for ($j = 0; $j <= $#tlat; $j++) {
+						next OUTER if abs($nodelat{$nodes[$i + $j]} - $tlat[$j]) > $slop;
+						next OUTER if abs($nodelon{$nodes[$i + $j]} - $tlon[$j]) > $slop;
 					}
+
+					$found = $i;
+					last OUTER;
 				}
 
-				for ($i = 0; $i <= $#tlat; $i++) {
-					$matched{$nodes[$found + $i]} = 1;
-				}
+				if ($found != -1) {
+					$changed = 1;
 
-				if ($#tlat == $#nlat) {
+					for ($i = 1; $i <= $tlat - 1; $i++) {
+						if ($noderefs{$nodes[$found + $i]} != 1) {
+							print STDERR "Intermediate node $nodes[$found + $i] referenced by ";
+							print STDERR "$noderefs{$nodes[$found + $i]} ways\n";
+
+							next TLID;
+						}
+					}
+
 					for ($i = 0; $i <= $#tlat; $i++) {
-						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
-						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
+						$matched{$nodes[$found + $i]} = 1;
+					}
 
-						if (abs($nodelat{$nodes[$found + $i]} - $newnodelat{$nodes[$found + $i]}) > $slop) {
+					if ($#tlat == $#nlat) {
+						for ($i = 0; $i <= $#tlat; $i++) {
+							$newnodelat{$nodes[$found + $i]} = $nlat[$i];
+							$newnodelon{$nodes[$found + $i]} = $nlon[$i];
+
+							if (abs($nodelat{$nodes[$found + $i]} - $newnodelat{$nodes[$found + $i]}) > $slop) {
+								$moved{$nodes[$found + $i]} = 1;
+							}
+							if (abs($nodelon{$nodes[$found + $i]} - $newnodelon{$nodes[$found + $i]}) > $slop) {
+								$moved{$nodes[$found + $i]} = 1;
+							}
+						}
+					} elsif ($#tlat > $#nlat) {
+						# Use as many old nodes as necessary - 1 for new positions
+
+						for ($i = 0; $i <= $#nlat - 1; $i++) {
+							$newnodelat{$nodes[$found + $i]} = $nlat[$i];
+							$newnodelon{$nodes[$found + $i]} = $nlon[$i];
 							$moved{$nodes[$found + $i]} = 1;
 						}
-						if (abs($nodelon{$nodes[$found + $i]} - $newnodelon{$nodes[$found + $i]}) > $slop) {
+
+						# Remove no longer used nodes
+
+						for ($i = $#nlat; $i <= $#tlat - 1; $i++) {
+							$newnodelat{$nodes[$found + $i]} = $newnodelat{$nodes[$found + $i - 1]}; # XXX
+							$newnodelon{$nodes[$found + $i]} = $newnodelon{$nodes[$found + $i - 1]};
 							$moved{$nodes[$found + $i]} = 1;
 						}
+
+						# Last old node gets last new position
+
+						$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
+						$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
+						$moved{$nodes[$found + $#tlon]} = 1;
+					} else {
+						# As many old nodes as available - 1 moved to new positions
+
+						for ($i = 0; $i <= $#tlat - 1; $i++) {
+							$newnodelat{$nodes[$found + $i]} = $nlat[$i];
+							$newnodelon{$nodes[$found + $i]} = $nlon[$i];
+							$moved{$nodes[$found + $i]} = 1;
+						}
+
+						# Last node moved to new position
+
+						$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
+						$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
+						$moved{$nodes[$found + $#tlon]} = 1;
+
+						# Make new nodes for in between
+
+						for ($i = $#tlat; $i < $#nlat; $i++) {
+							$gensym--;
+
+							$newnodelat{$gensym} = $nlat[$i];
+							$newnodelon{$gensym} = $nlon[$i];
+							$matched{$gensym} = 1;
+							$moved{$gensym} = 1;
+
+							$nodelat{$gensym} = $nodelat{$nodes[$found + $i - 1]};
+							$nodelon{$gensym} = $nodelon{$nodes[$found + $i - 1]};
+
+							splice @nodes, $found + $i, 0, $gensym;
+						}
 					}
-				} elsif ($#tlat > $#nlat) {
-					# Use as many old nodes as necessary - 1 for new positions
 
-					for ($i = 0; $i <= $#nlat - 1; $i++) {
-						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
-						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
-						$moved{$nodes[$found + $i]} = 1;
-					}
-
-					# Remove no longer used nodes
-
-					for ($i = $#nlat; $i <= $#tlat - 1; $i++) {
-						$newnodelat{$nodes[$found + $i]} = $newnodelat{$nodes[$found + $i - 1]}; # XXX
-						$newnodelon{$nodes[$found + $i]} = $newnodelon{$nodes[$found + $i - 1]};
-						$moved{$nodes[$found + $i]} = 1;
-					}
-
-					# Last old node gets last new position
-
-					$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
-					$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
-					$moved{$nodes[$found + $#tlon]} = 1;
-				} else {
-					# As many old nodes as available - 1 moved to new positions
-
-					for ($i = 0; $i <= $#tlat - 1; $i++) {
-						$newnodelat{$nodes[$found + $i]} = $nlat[$i];
-						$newnodelon{$nodes[$found + $i]} = $nlon[$i];
-						$moved{$nodes[$found + $i]} = 1;
-					}
-
-					# Last node moved to new position
-
-					$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
-					$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
-					$moved{$nodes[$found + $#tlon]} = 1;
-
-					# Make new nodes for in between
-
-					for ($i = $#tlat; $i < $#nlat; $i++) {
-						$gensym--;
-
-						$newnodelat{$gensym} = $nlat[$i];
-						$newnodelon{$gensym} = $nlon[$i];
-						$matched{$gensym} = 1;
-						$moved{$gensym} = 1;
-
-						$nodelat{$gensym} = $nodelat{$nodes[$found + $i - 1]};
-						$nodelon{$gensym} = $nodelon{$nodes[$found + $i - 1]};
-
-						splice @nodes, $found + $i, 0, $gensym;
-					}
+					next TLID;
 				}
 
-				next TLID;
+				@tlat = reverse(@tlat);
+				@tlon = reverse(@tlon);
+
+				@nlat = reverse(@nlat);
+				@nlon = reverse(@nlon);
 			}
-
-			@tlat = reverse(@tlat);
-			@tlon = reverse(@tlon);
-
-			@nlat = reverse(@nlat);
-			@nlon = reverse(@nlon);
 		}
 	}
 
