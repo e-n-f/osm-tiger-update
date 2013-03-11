@@ -2,7 +2,12 @@
 
 use POSIX;
 
-$county = "18167";  # Vigo County, Terre Haute, IN
+@counties = (
+	"18011", # Boone
+	"18057", # Hamilton
+	"18023", # Clinton
+	"18159", # Tipton
+);
 
 $minlat = 360;
 $minlon = 360;
@@ -15,38 +20,40 @@ $slop = 2 * $foot;
 
 print "0 setlinewidth\n";
 
-@files = <../../tiger/2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
+for $county (@counties) {
+	@files = <../../tiger/2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
 
-open(IN, "unzip -p $files[0] TGR$county.RT1 |");
-while (<IN>) {
-	chomp;
-	$tlid = substr($_, 5, 10);
-	$tlid =~ s/^ *//;
+	open(IN, "unzip -p $files[0] TGR$county.RT1 |");
+	while (<IN>) {
+		chomp;
+		$tlid = substr($_, 5, 10);
+		$tlid =~ s/^ *//;
 
-	$startlon{$tlid} = substr($_, 190, 10) / 1000000;
-	$startlat{$tlid} = substr($_, 200, 9) / 1000000;
-	$endlon{$tlid} = substr($_, 209, 10) / 1000000;
-	$endlat{$tlid} = substr($_, 219, 9) / 1000000;
-}
-close(IN);
+		$startlon{$tlid} = substr($_, 190, 10) / 1000000;
+		$startlat{$tlid} = substr($_, 200, 9) / 1000000;
+		$endlon{$tlid} = substr($_, 209, 10) / 1000000;
+		$endlat{$tlid} = substr($_, 219, 9) / 1000000;
+	}
+	close(IN);
 
-open(IN, "unzip -p $files[0] TGR$county.RT2 |");
-while (<IN>) {
-	chomp;
-	$tlid = substr($_, 5, 10);
-	$tlid =~ s/^ *//;
+	open(IN, "unzip -p $files[0] TGR$county.RT2 |");
+	while (<IN>) {
+		chomp;
+		$tlid = substr($_, 5, 10);
+		$tlid =~ s/^ *//;
 
-	for ($i = 18; $i < 208; $i += 19) {
-		$lon = substr($_, $i, 10) / 1000000;
-		$lat = substr($_, $i + 10, 9) / 1000000;
+		for ($i = 18; $i < 208; $i += 19) {
+			$lon = substr($_, $i, 10) / 1000000;
+			$lat = substr($_, $i + 10, 9) / 1000000;
 
-		if ($lat != 0) {
-			push @{$oldlat{$tlid}}, $lat;
-			push @{$oldlon{$tlid}}, $lon;
+			if ($lat != 0) {
+				push @{$oldlat{$tlid}}, $lat;
+				push @{$oldlon{$tlid}}, $lon;
+			}
 		}
 	}
+	close(IN);
 }
-close(IN);
 
 for $tlid (keys(%startlat)) {
 	unshift @{$oldlat{$tlid}}, $startlat{$tlid};
@@ -56,33 +63,35 @@ for $tlid (keys(%startlat)) {
 	push @{$oldlon{$tlid}}, $endlon{$tlid};
 }
 
-open(IN, "java shpcat ../../tiger/2013/www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip |");
-while (<IN>) {
-	chomp;
+for $county (@counties) {
+	open(IN, "java shpcat ../../tiger/2013/www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip |");
+	while (<IN>) {
+		chomp;
 
-	($state, $county, $tlid) = split(/\|/);
-	$tlid =~ s/^ *//;
-	next unless $tlid =~ /^[0-9]/;
+		($state, $county, $tlid) = split(/\|/);
+		$tlid =~ s/^ *//;
+		next unless $tlid =~ /^[0-9]/;
 
-	s/.*polyline //;
-	@points = split(/ /, $_);
+		s/.*polyline //;
+		@points = split(/ /, $_);
 
-	for $p (@points) {
-		($lon, $lat) = split(/,/, $p);
-		push @{$newlat{$tlid}}, $lat;
-		push @{$newlon{$tlid}}, $lon;
+		for $p (@points) {
+			($lon, $lat) = split(/,/, $p);
+			push @{$newlat{$tlid}}, $lat;
+			push @{$newlon{$tlid}}, $lon;
 
-		if ($lat < $minlat) {
-			$minlat = $lat;
-		}
-		if ($lon < $minlon) {
-			$minlon = $lon;
-		}
-		if ($lat > $maxlat) {
-			$maxlat = $lat;
-		}
-		if ($lon > $maxlon) {
-			$maxlon = $lon;
+			if ($lat < $minlat) {
+				$minlat = $lat;
+			}
+			if ($lon < $minlon) {
+				$minlon = $lon;
+			}
+			if ($lat > $maxlat) {
+				$maxlat = $lat;
+			}
+			if ($lon > $maxlon) {
+				$maxlon = $lon;
+			}
 		}
 	}
 }
