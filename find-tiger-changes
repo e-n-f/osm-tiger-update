@@ -320,7 +320,7 @@ for $way (keys(%nodes)) {
 if ($xml) {
 	for ($i = $gensym; $i < 0; $i++) {
 		print "\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\" version=\"1\" timestamp=\"$timestamp\">\n";
-		print "\t\t<tag k=\"source\" v=\"TIGERrd2013\">\n";
+		print "\t\t<tag k=\"source\" v=\"TIGERrd2013\"/>\n";
 		print "\t</node>\n";
 	}
 
@@ -370,11 +370,11 @@ if ($xml) {
 				print;
 				for $node (@nodes) {
 					if ($newnodelat{$node} ne "delete") {
-						print "\t\t<nd ref=\"$node\">\n";
+						print "\t\t<nd ref=\"$node\"/>\n";
 					}
 				}
 
-				print "\t\t<tag k=\"tiger:update\" v=\"TIGERrd13\">\n";
+				print "\t\t<tag k=\"tiger:update\" v=\"TIGERrd13\"/>\n";
 
 				while (<IN>) {
 					unless (/<nd/) {
