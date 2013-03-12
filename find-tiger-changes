@@ -333,9 +333,8 @@ if ($xml) {
 			$id = $1;
 
 			if ($newnodelat{$id} eq "delete") {
-				# XXX What do we have to do to really delete unused nodes?
 				print "\t<delete>\n";
-				print "\t\t<node id=\"$id\">\n";
+				print "\t\t<node id=\"$id\"/>\n";
 				print "\t</delete>\n";
 				$moved{$id} = 0;
 			}
@@ -343,7 +342,7 @@ if ($xml) {
 			if ($moved{$id}) {
 				s/lat="[^"]*/lat=\"$newnodelat{$id}/;
 				s/lon="[^"]*/lon=\"$newnodelon{$id}/;
-				s/changeset="[^"]*/changeset=\"-1/;
+				s/changeset="[^"]*"//;
 
 				if (/version="([^"]*)/) {
 					$version = $1 + 1;
@@ -374,7 +373,7 @@ if ($xml) {
 			@nodes = @{$nodes{$way}};
 			$changed = 0;
 			s/timestamp="[^"]*/timestamp=\"$timestamp/;
-			s/changeset="[^"]*/changeset=\"-1/;
+			s/changeset="[^"]*"//;
 
 			if (/version="([^"]*)/) {
 				$version = $1 + 1;
