@@ -146,8 +146,7 @@ if ($xml) {
 	}
 }
 
-open(IN, "/tmp/converted");
-# open(IN, "./osmconvert $ENV{'HOME'}/north-america-latest.osm.pbf -b=$countybounds |");
+open(IN, "./osmconvert $ENV{'HOME'}/north-america-latest.osm.pbf -b=$countybounds |");
 
 $tmpfile = "/tmp/osm.$$";
 open(OUT, ">$tmpfile");
