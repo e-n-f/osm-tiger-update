@@ -186,8 +186,6 @@ for $way (keys(%nodes)) {
 	@nodes = @{$nodes{$way}};
 	@tlids = @{$tlids{$way}};
 
-	$changed = 0;
-
 	TLID:
 	for $tlid (@tlids) {
 		for $county (@counties) {
@@ -213,8 +211,6 @@ for $way (keys(%nodes)) {
 				}
 
 				if ($found != -1) {
-					$changed = 1;
-
 					for ($i = 1; $i <= $tlat - 1; $i++) {
 						if ($noderefs{$nodes[$found + $i]} != 1) {
 							print STDERR "Intermediate node $nodes[$found + $i] referenced by ";
@@ -268,6 +264,8 @@ for $way (keys(%nodes)) {
 						$newnodelat{$nodes[$found + $#tlat]} = $nlat[$#nlat];
 						$newnodelon{$nodes[$found + $#tlon]} = $nlon[$#nlon];
 						$moved{$nodes[$found + $#tlon]} = 1;
+
+						$affected{$way} = 1;
 					} else {
 						# As many old nodes as available - 1 moved to new positions
 
@@ -298,6 +296,8 @@ for $way (keys(%nodes)) {
 
 							splice @nodes, $found + $i, 0, $gensym;
 						}
+
+						$affected{$way} = 1;
 					}
 
 					next TLID;
@@ -371,7 +371,6 @@ if ($xml) {
 		if (/<way id="([^"]*)/) {
 			$way = $1;
 			@nodes = @{$nodes{$way}};
-			$changed = 0;
 			s/timestamp="[^"]*/timestamp=\"$timestamp/;
 			s/changeset="[^"]*"//;
 
@@ -380,14 +379,7 @@ if ($xml) {
 				s/version="[^"]*/version=\"$version/;
 			}
 
-			for $node (@nodes) {
-				if ($moved{$node}) {
-					$changed = 1;
-					last;
-				}
-			}
-
-			if ($changed) {
+			if ($affected{$way}) {
 				print "\t<modify>\n";
 				print "\t$_";
 				for $node (@nodes) {
