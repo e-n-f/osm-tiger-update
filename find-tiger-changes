@@ -105,9 +105,7 @@ if ($xml) {
 	$timestamp = sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", $year + 1900, $mon + 1, $mday,
 		$hour, $min, $sec);
 
-	print "<?xml version='1.0' encoding='UTF-8'?>\n";
-	print "<osm version=\"0.6\" generator=\"2013 TIGER update\" timestamp=\"$timestamp\">\n";
-	print "\t<bounds minlat=\"$minlat\" minlon=\"$minlon\" maxlat=\"$maxlat\" maxlon=\"$maxlon\"/>\n";
+	print "<osmChange version=\"0.6\" generator=\"2013 TIGER update\">\n";
 } else {
 	$rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
 
@@ -148,7 +146,8 @@ if ($xml) {
 	}
 }
 
-open(IN, "./osmconvert $ENV{'HOME'}/north-america-latest.osm.pbf -b=$countybounds |");
+open(IN, "/tmp/converted");
+# open(IN, "./osmconvert $ENV{'HOME'}/north-america-latest.osm.pbf -b=$countybounds |");
 
 $tmpfile = "/tmp/osm.$$";
 open(OUT, ">$tmpfile");
@@ -318,11 +317,15 @@ for $way (keys(%nodes)) {
 }
 
 if ($xml) {
+	print "\t<create>\n";
+
 	for ($i = $gensym; $i < 0; $i++) {
-		print "\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\" version=\"1\" timestamp=\"$timestamp\">\n";
-		print "\t\t<tag k=\"source\" v=\"TIGERrd2013\"/>\n";
-		print "\t</node>\n";
+		print "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\" version=\"1\" timestamp=\"$timestamp\">\n";
+		print "\t\t\t<tag k=\"source\" v=\"TIGERrd13\"/>\n";
+		print "\t\t</node>\n";
 	}
+
+	print "\t</create>\n";
 
 	open(IN, "$tmpfile");
 
@@ -332,24 +335,38 @@ if ($xml) {
 
 			if ($newnodelat{$id} eq "delete") {
 				# XXX What do we have to do to really delete unused nodes?
+				print "\t<delete>\n";
+				print "\t\t<node id=\"$id\">\n";
+				print "\t</delete>\n";
 				$moved{$id} = 0;
 			}
 
 			if ($moved{$id}) {
 				s/lat="[^"]*/lat=\"$newnodelat{$id}/;
 				s/lon="[^"]*/lon=\"$newnodelon{$id}/;
+				s/changeset="[^"]*/changeset=\"-1/;
 
-				print;
+				if (/version="([^"]*)/) {
+					$version = $1 + 1;
+					s/version="[^"]*/version=\"$version/;
+				}
+
+				print "\t<modify>\n";
+				print "\t$_";
 			}
 
 			unless (/\/>/) {
 				while (<IN>) {
 					if ($moved{$id}) {
-						print;
+						print "\t$_";
 					}
 
 					last if (/<\/node/);
 				}
+			}
+
+			if ($moved{$id}) {
+				print "\t</modify>\n";
 			}
 		}
 
@@ -358,6 +375,12 @@ if ($xml) {
 			@nodes = @{$nodes{$way}};
 			$changed = 0;
 			s/timestamp="[^"]*/timestamp=\"$timestamp/;
+			s/changeset="[^"]*/changeset=\"-1/;
+
+			if (/version="([^"]*)/) {
+				$version = $1 + 1;
+				s/version="[^"]*/version=\"$version/;
+			}
 
 			for $node (@nodes) {
 				if ($moved{$node}) {
@@ -367,22 +390,25 @@ if ($xml) {
 			}
 
 			if ($changed) {
-				print;
+				print "\t<modify>\n";
+				print "\t$_";
 				for $node (@nodes) {
 					if ($newnodelat{$node} ne "delete") {
-						print "\t\t<nd ref=\"$node\"/>\n";
+						print "\t\t\t<nd ref=\"$node\"/>\n";
 					}
 				}
 
-				print "\t\t<tag k=\"tiger:update\" v=\"TIGERrd13\"/>\n";
+				print "\t\t\t<tag k=\"tiger:update\" v=\"TIGERrd13\"/>\n";
 
 				while (<IN>) {
 					unless (/<nd/) {
-						print;
+						print "\t$_";
 					}
 
 					last if (/<\/way/);
 				}
+
+				print "\t</modify>\n";
 			} else {
 				while (<IN>) {
 					last if (/<\/way/);
@@ -391,7 +417,7 @@ if ($xml) {
 		}
 	}
 
-	print "</osm>\n";
+	print "</osmChange>\n";
 
 	close(IN);
 } else {
