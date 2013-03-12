@@ -2,6 +2,8 @@
 
 use POSIX;
 
+$xml = 1;
+
 @counties = (
 	"18011", # Boone
 	"18057", # Hamilton
@@ -18,7 +20,9 @@ $pi = 4 * atan2(1, 1);
 $foot = .00000274;
 $slop = 2 * $foot;
 
-print "0 setlinewidth\n";
+unless ($xml) {
+	print "0 setlinewidth\n";
+}
 
 for $county (@counties) {
 	@files = <../../tiger/2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
@@ -96,46 +100,61 @@ for $county (@counties) {
 
 $countybounds = "$minlon,$minlat,$maxlon,$maxlat";
 
-$rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
+if ($xml) {
+	($sec, $min, $hour, $mday, $mon, $year) = gmtime(time);
+	$timestamp = sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", $year + 1900, $mon + 1, $mday,
+		$hour, $min, $sec);
 
-if (($maxlon - $minlon) * $rat > $maxlat - $minlat) {
-	$dimension = ($maxlon - $minlon) * $rat;
+	print "<?xml version='1.0' encoding='UTF-8'?>\n";
+	print "<osm version=\"0.6\" generator=\"2013 TIGER update\" timestamp=\"$timestamp\">\n";
+	print "\t<bounds minlat=\"$minlat\" minlon=\"$minlon\" maxlat=\"$maxlat\" maxlon=\"$maxlon\"/>\n";
 } else {
-	$dimension = $maxlat - $minlat;
-}
+	$rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
 
-$lat = ($maxlat + $minlat) / 2;
-$lon = ($maxlon + $minlon) / 2;
+	if (($maxlon - $minlon) * $rat > $maxlat - $minlat) {
+		$dimension = ($maxlon - $minlon) * $rat;
+	} else {
+		$dimension = $maxlat - $minlat;
+	}
 
-$minlat = $lat - $dimension / 2;
-$minlon = $lon - ($dimension / $rat / 2);
-$maxlat = $lat + $dimension / 2;
-$maxlon = $lon + ($dimension / $rat / 2);
+	$lat = ($maxlat + $minlat) / 2;
+	$lon = ($maxlon + $minlon) / 2;
 
-print "1 1 0 setrgbcolor\n";
+	$minlat = $lat - $dimension / 2;
+	$minlon = $lon - ($dimension / $rat / 2);
+	$maxlat = $lat + $dimension / 2;
+	$maxlon = $lon + ($dimension / $rat / 2);
 
-for $county (@counties) {
-	for $tlid (keys(%{$newlat{$county}})) {
-		@olat = @{$oldlat{$county}{$tlid}};
+	print "1 1 0 setrgbcolor\n";
 
-		if ($#olat < 0) {
-			@a = @{$newlat{$county}{$tlid}};
-			@o = @{$newlon{$county}{$tlid}};
+	for $county (@counties) {
+		for $tlid (keys(%{$newlat{$county}})) {
+			@olat = @{$oldlat{$county}{$tlid}};
 
-			for ($i = 0; $i <= $#a; $i++) {
-				printf("%.3f %.3f %s ",
-					($o[$i] - $minlon) * 612 / ($maxlon - $minlon),
-					($a[$i] - $minlat) * 612 / ($maxlat - $minlat),
-					$i == 0 ? "moveto" : "lineto");
+			if ($#olat < 0) {
+				@a = @{$newlat{$county}{$tlid}};
+				@o = @{$newlon{$county}{$tlid}};
+
+				for ($i = 0; $i <= $#a; $i++) {
+					printf("%.3f %.3f %s ",
+						($o[$i] - $minlon) * 612 / ($maxlon - $minlon),
+						($a[$i] - $minlat) * 612 / ($maxlat - $minlat),
+						$i == 0 ? "moveto" : "lineto");
+				}
+
+				print "stroke\n";
 			}
-
-			print "stroke\n";
 		}
 	}
 }
 
 open(IN, "./osmconvert $ENV{'HOME'}/north-america-latest.osm.pbf -b=$countybounds |");
+
+$tmpfile = "/tmp/osm.$$";
+open(OUT, ">$tmpfile");
+
 while (<IN>) {
+	print OUT;
 	if (/<node id="([^"]*).*lat="([^"]*).*lon="([^"]*)/) {
 		$nodelat{$1} = $2;
 		$nodelon{$1} = $3;
@@ -143,12 +162,11 @@ while (<IN>) {
 
 	if (/<way id="([^"]*)/) {
 		$way = $1;
-		$theway = $_;
 		@nodes = ();
 		@tlids = ();
 
 		while (<IN>) {
-			$theway .= $_;
+			print OUT;
 			last if (/<\/way/);
 
 			if (/<nd ref="([^"]*)/) {
@@ -236,8 +254,14 @@ for $way (keys(%nodes)) {
 						# Remove no longer used nodes
 
 						for ($i = $#nlat; $i <= $#tlat - 1; $i++) {
-							$newnodelat{$nodes[$found + $i]} = $newnodelat{$nodes[$found + $i - 1]}; # XXX
-							$newnodelon{$nodes[$found + $i]} = $newnodelon{$nodes[$found + $i - 1]};
+							if ($xml) {
+								$newnodelat{$nodes[$found + $i]} = "delete";
+								$newnodelon{$nodes[$found + $i]} = "delete";
+							} else {
+								$newnodelat{$nodes[$found + $i]} = $newnodelat{$nodes[$found + $i - 1]}; 
+								$newnodelon{$nodes[$found + $i]} = $newnodelon{$nodes[$found + $i - 1]};
+							}
+
 							$moved{$nodes[$found + $i]} = 1;
 						}
 
@@ -293,84 +317,165 @@ for $way (keys(%nodes)) {
 	@{$nodes{$way}} = @nodes;
 }
 
-for $way (keys(%nodes)) {
-	@nodes = @{$nodes{$way}};
-	@tlids = @{$tlids{$way}};
+if ($xml) {
+	for ($i = $gensym; $i < 0; $i++) {
+		print "\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\" version=\"1\" timestamp=\"$timestamp\">\n";
+		print "\t\t<tag k=\"source\" v=\"TIGERrd2013\">\n";
+		print "\t</node>\n";
+	}
 
-	if ($#tlids < 0) {
-		# New ways, only in OSM
+	open(IN, "$tmpfile");
 
-		print ".7 1 .7 setrgbcolor ";
+	while (<IN>) {
+		if (/<node id="([^"]*).*lat="([^"]*).*lon="([^"]*)/) {
+			$id = $1;
 
-		$within = 0;
-		for ($i = 0; $i <= $#nodes; $i++) {
-			if ($nodelon{$nodes[$i]} == 0) {
-				$within = 0;
-			} else {
-				printf("%.3f %.3f %s ",
-					($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
-					($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
-					$within ? "lineto" : "moveto");
-				$within = 1;
+			if ($newnodelat{$id} eq "delete") {
+				# XXX What do we have to do to really delete unused nodes?
+				$moved{$id} = 0;
+			}
+
+			if ($moved{$id}) {
+				s/lat="[^"]*/lat=\"$newnodelat{$id}/;
+				s/lon="[^"]*/lon=\"$newnodelon{$id}/;
+
+				print;
+			}
+
+			unless (/\/>/) {
+				while (<IN>) {
+					if ($moved{$id}) {
+						print;
+					}
+
+					last if (/<\/node/);
+				}
 			}
 		}
 
-		print "stroke\n";
-	} else {
-		for ($i = 0; $i < $#nodes; $i++) {
-			if (!$matched{$nodes[$i]} && !$matched{$nodes[$i + 1]}) {
-				# Not matched, so edited in OSM (or maybe just out of OSM extract bounds)
+		if (/<way id="([^"]*)/) {
+			$way = $1;
+			@nodes = @{$nodes{$way}};
+			$changed = 0;
+			s/timestamp="[^"]*/timestamp=\"$timestamp/;
 
-				if ($nodelat{$nodes[$i]} != 0 && $nodelat{$nodes[$i + 1]} != 0) {
-					print "0 .6 0 setrgbcolor ";
-					printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
-						($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
-						($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
-						($nodelon{$nodes[$i + 1]} - $minlon) * 612 / ($maxlon - $minlon),
-						($nodelat{$nodes[$i + 1]} - $minlat) * 612 / ($maxlat - $minlat));
+			for $node (@nodes) {
+				if ($moved{$node}) {
+					$changed = 1;
+					last;
+				}
+			}
+
+			if ($changed) {
+				print;
+				for $node (@nodes) {
+					if ($newnodelat{$node} ne "delete") {
+						print "\t\t<nd ref=\"$node\">\n";
+					}
+				}
+
+				print "\t\t<tag k=\"tiger:update\" v=\"TIGERrd13\">\n";
+
+				while (<IN>) {
+					unless (/<nd/) {
+						print;
+					}
+
+					last if (/<\/way/);
 				}
 			} else {
-				# Old TIGER (either matched and moved, or preserved)
+				while (<IN>) {
+					last if (/<\/way/);
+				}
+			}
+		}
+	}
 
-				if ($nodelat{$nodes[$i]} != 0 && $nodelat{$nodes[$i + 1]} != 0) {
-					print ".7 .7 1 setrgbcolor ";
-					printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
+	print "</osm>\n";
+
+	close(IN);
+} else {
+	for $way (keys(%nodes)) {
+		@nodes = @{$nodes{$way}};
+		@tlids = @{$tlids{$way}};
+
+		if ($#tlids < 0) {
+			# New ways, only in OSM
+
+			print ".7 1 .7 setrgbcolor ";
+
+			$within = 0;
+			for ($i = 0; $i <= $#nodes; $i++) {
+				if ($nodelon{$nodes[$i]} == 0) {
+					$within = 0;
+				} else {
+					printf("%.3f %.3f %s ",
 						($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
 						($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
-						($nodelon{$nodes[$i + 1]} - $minlon) * 612 / ($maxlon - $minlon),
-						($nodelat{$nodes[$i + 1]} - $minlat) * 612 / ($maxlat - $minlat));
+						$within ? "lineto" : "moveto");
+					$within = 1;
 				}
+			}
 
-				if ($moved{$nodes[$i]} || $moved{$nodes[$i + 1]}) {
-					# One or both ends moved in new TIGER
+			print "stroke\n";
+		} else {
+			for ($i = 0; $i < $#nodes; $i++) {
+				if (!$matched{$nodes[$i]} && !$matched{$nodes[$i + 1]}) {
+					# Not matched, so edited in OSM (or maybe just out of OSM extract bounds)
 
-					print "0 0 .6 setrgbcolor ";
-
-					if ($moved{$nodes[$i]}) {
-						$startlat = $newnodelat{$nodes[$i]};
-						$startlon = $newnodelon{$nodes[$i]};
-					} else {
-						$startlat = $nodelat{$nodes[$i]};
-						$startlon = $nodelon{$nodes[$i]};
-					}
-
-					if ($moved{$nodes[$i + 1]}) {
-						$endlat = $newnodelat{$nodes[$i + 1]};
-						$endlon = $newnodelon{$nodes[$i + 1]};
-					} else {
-						$endlat = $nodelat{$nodes[$i + 1]};
-						$endlon = $nodelon{$nodes[$i + 1]};
-					}
-
-					if ($startlat != 0 && $endlat != 0) {
+					if ($nodelat{$nodes[$i]} != 0 && $nodelat{$nodes[$i + 1]} != 0) {
+						print "0 .6 0 setrgbcolor ";
 						printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
-							($startlon - $minlon) * 612 / ($maxlon - $minlon),
-							($startlat - $minlat) * 612 / ($maxlat - $minlat),
-							($endlon - $minlon) * 612 / ($maxlon - $minlon),
-							($endlat - $minlat) * 612 / ($maxlat - $minlat));
+							($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
+							($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
+							($nodelon{$nodes[$i + 1]} - $minlon) * 612 / ($maxlon - $minlon),
+							($nodelat{$nodes[$i + 1]} - $minlat) * 612 / ($maxlat - $minlat));
+					}
+				} else {
+					# Old TIGER (either matched and moved, or preserved)
+
+					if ($nodelat{$nodes[$i]} != 0 && $nodelat{$nodes[$i + 1]} != 0) {
+						print ".7 .7 1 setrgbcolor ";
+						printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
+							($nodelon{$nodes[$i]} - $minlon) * 612 / ($maxlon - $minlon),
+							($nodelat{$nodes[$i]} - $minlat) * 612 / ($maxlat - $minlat),
+							($nodelon{$nodes[$i + 1]} - $minlon) * 612 / ($maxlon - $minlon),
+							($nodelat{$nodes[$i + 1]} - $minlat) * 612 / ($maxlat - $minlat));
+					}
+
+					if ($moved{$nodes[$i]} || $moved{$nodes[$i + 1]}) {
+						# One or both ends moved in new TIGER
+
+						print "0 0 .6 setrgbcolor ";
+
+						if ($moved{$nodes[$i]}) {
+							$startlat = $newnodelat{$nodes[$i]};
+							$startlon = $newnodelon{$nodes[$i]};
+						} else {
+							$startlat = $nodelat{$nodes[$i]};
+							$startlon = $nodelon{$nodes[$i]};
+						}
+
+						if ($moved{$nodes[$i + 1]}) {
+							$endlat = $newnodelat{$nodes[$i + 1]};
+							$endlon = $newnodelon{$nodes[$i + 1]};
+						} else {
+							$endlat = $nodelat{$nodes[$i + 1]};
+							$endlon = $nodelon{$nodes[$i + 1]};
+						}
+
+						if ($startlat != 0 && $endlat != 0) {
+							printf("%.3f %.3f moveto %.3f %.3f lineto stroke\n",
+								($startlon - $minlon) * 612 / ($maxlon - $minlon),
+								($startlat - $minlat) * 612 / ($maxlat - $minlat),
+								($endlon - $minlon) * 612 / ($maxlon - $minlon),
+								($endlat - $minlat) * 612 / ($maxlat - $minlat));
+						}
 					}
 				}
 			}
 		}
 	}
 }
+
+unlink($tmpfile);
