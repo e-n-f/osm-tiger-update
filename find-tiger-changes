@@ -319,9 +319,7 @@ if ($xml) {
 	print "\t<create>\n";
 
 	for ($i = $gensym; $i < 0; $i++) {
-		print "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\" version=\"1\" timestamp=\"$timestamp\">\n";
-		print "\t\t\t<tag k=\"source\" v=\"TIGERrd13\"/>\n";
-		print "\t\t</node>\n";
+		print "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\" version=\"1\" timestamp=\"$timestamp\"/>\n";
 	}
 
 	print "\t</create>\n";
@@ -387,8 +385,6 @@ if ($xml) {
 						print "\t\t\t<nd ref=\"$node\"/>\n";
 					}
 				}
-
-				print "\t\t\t<tag k=\"tiger:update\" v=\"TIGERrd13\"/>\n";
 
 				while (<IN>) {
 					unless (/<nd/) {
