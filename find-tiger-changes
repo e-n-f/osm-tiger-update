@@ -71,6 +71,7 @@ for $county (@counties) {
 }
 
 for $county (@counties) {
+	print STDERR "read county $county\n";
 	open(IN, "java shpcat ../../tiger/2013/www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip |");
 	while (<IN>) {
 		chomp;
@@ -340,23 +341,111 @@ for $way (keys(%nodes)) {
 	@{$nodes{$way}} = @nodes;
 }
 
-for $way (keys(%nodes)) {
-	@nodes = @{$nodes{$way}};
+# Slight warps to adjacent reality if necessary to preserve consistency
 
-	for ($i = 1; $i < $#nodes; $i++) {
-		if ($moved{$nodes[$i]} && !$matched{$nodes[$i - 1]}) {
-			$transitional{$nodes[$i]} = 1;
-		}
+$again = 1;
+while ($again) {
+	$again = 0;
 
-		if ($moved{$nodes[$i]} && !$matched{$nodes[$i + 1]}) {
-			$transitional{$nodes[$i]} = 1;
+	for $way (keys(%nodes)) {
+		@nodes = @{$nodes{$way}};
+
+		for ($pass = 0; $pass < 2; $pass++) {
+			for ($i = 1; $i <= $#nodes; $i++) {
+				if ($moved{$nodes[$i]} && !$matched{$nodes[$i - 1]} && $noderefs{$nodes[$i - 1]} == 1) {
+					for ($j = $i - 1; $j > 0; $j--) {
+						last if $matched{$nodes[$j]} || $noderefs{$nodes[$j]} > 1 || $nodelat{$nodes[$j - 1]} == 0;
+					}
+
+					next if $nodelat{$nodes[$j]} == 0;
+
+					print STDERR "an adjacent block in $way is $nodes[$i] to $nodes[$j]:  ";
+					print STDERR "$nodelat{$nodes[$i]},$nodelon{$nodes[$i]} to ";
+					print STDERR "$nodelat{$nodes[$j]},$nodelon{$nodes[$j]}\n";
+
+					if ($moved{$nodes[$j]}) {
+						$latj = $newnodelat{$nodes[$j]};
+						$lonj = $newnodelon{$nodes[$j]};
+					} else {
+						$latj = $nodelat{$nodes[$j]};
+						$lonj = $nodelon{$nodes[$j]};
+					}
+
+					$olati = $nodelat{$nodes[$i]};
+					$oloni = $nodelon{$nodes[$i]};
+
+					$olatd = $olati - $latj;
+					$olond = ($oloni - $lonj) * $rat;
+					$oang = atan2($olatd, $olond);
+					$odist = sqrt($olatd * $olatd + $olond * $olond);
+
+					$nlati = $newnodelat{$nodes[$i]};
+					$nloni = $newnodelon{$nodes[$i]};
+
+					$nlatd = $nlati - $latj;
+					$nlond = ($nloni - $lonj) * $rat;
+					$nang = atan2($olatd, $olond);
+					$ndist = sqrt($nlatd * $nlatd + $nlond * $nlond);
+
+					printf STDERR ("former angle %f dist %f\n", $oang * 180 / $pi, $odist);
+					printf STDERR ("new angle %f dist %f\n", $nang * 180 / $pi, $ndist);
+
+					for ($p = $j + 1; $p < $i; $p++) {
+						$plat = $nodelat{$nodes[$p]};
+						$plon = $nodelon{$nodes[$p]};
+
+						$platd = $plat - $latj;
+						$plond = ($plon - $lonj) * $rat;
+						$pang = atan2($platd, $plond);
+						$pdist = sqrt($platd * $platd + $plond * $plond);
+
+						print STDERR ("intermediate $nodes[$p] $plat $plon ");
+						printf STDERR ("angle %f dist %f\n", $pang * 180 / $pi, $pdist);
+
+						$pdist *= $ndist/$odist;
+						$pang += $nang - $oang;
+
+						printf STDERR ("replace with angle %f dist %f\n", $pang * 180 / $pi, $pdist);
+
+						$plat = $latj + $pdist * sin($pang);
+						$plon = $lonj + $pdist * cos($pang) / $rat;
+
+						print STDERR ("for new pos $plat $plon\n");
+
+						$newnodelat{$nodes[$p]} = $plat;
+						$newnodelon{$nodes[$p]} = $plon;
+						$matched{$nodes[$p]} = 1;
+						$moved{$nodes[$p]} = 1;
+
+						$again = 1;
+					}
+				}
+			}
+
+			@nodes = reverse(@nodes);
 		}
 	}
 }
 
-for $node (keys(%transitional)) {
-	$newnodelat{$node} = ($nodelat{$node} + $newnodelat{$node}) / 2;
-	$newnodelon{$node} = ($nodelon{$node} + $newnodelon{$node}) / 2;
+if (0) {
+	for $way (keys(%nodes)) {
+		@nodes = @{$nodes{$way}};
+
+		for ($i = 1; $i < $#nodes; $i++) {
+			if ($moved{$nodes[$i]} && !$matched{$nodes[$i - 1]}) {
+				$transitional{$nodes[$i]} = 1;
+			}
+
+			if ($moved{$nodes[$i]} && !$matched{$nodes[$i + 1]}) {
+				$transitional{$nodes[$i]} = 1;
+			}
+		}
+	}
+
+	for $node (keys(%transitional)) {
+		$newnodelat{$node} = ($nodelat{$node} + $newnodelat{$node}) / 2;
+		$newnodelon{$node} = ($nodelon{$node} + $newnodelon{$node}) / 2;
+	}
 }
 
 if ($xml) {
