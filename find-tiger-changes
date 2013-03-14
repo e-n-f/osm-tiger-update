@@ -112,6 +112,7 @@ for $county (@counties) {
 }
 
 $countybounds = "$minlon,$minlat,$maxlon,$maxlat";
+$rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
 
 if ($xml) {
 	($sec, $min, $hour, $mday, $mon, $year) = gmtime(time);
@@ -120,8 +121,6 @@ if ($xml) {
 
 	print "<osmChange version=\"0.6\" generator=\"2013 TIGER update\">\n";
 } else {
-	$rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
-
 	if (($maxlon - $minlon) * $rat > $maxlat - $minlat) {
 		$dimension = ($maxlon - $minlon) * $rat;
 	} else {
