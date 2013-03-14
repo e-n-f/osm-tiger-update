@@ -18,7 +18,8 @@ $maxlon = -360;
 
 $pi = 4 * atan2(1, 1);
 $foot = .00000274;
-$slop = 2 * $foot;
+$matchslop = 50 * $foot;
+$moveslop = 2 * $foot;
 
 unless ($xml) {
 	print "0 setlinewidth\n";
@@ -221,8 +222,8 @@ for $way (keys(%nodes)) {
 				OUTER:
 				for ($i = 0; $i <= $#nodes; $i++) {
 					for ($j = 0; $j <= $#tlat; $j++) {
-						next OUTER if abs($nodelat{$nodes[$i + $j]} - $tlat[$j]) > $slop;
-						next OUTER if abs($nodelon{$nodes[$i + $j]} - $tlon[$j]) > $slop;
+						next OUTER if abs($nodelat{$nodes[$i + $j]} - $tlat[$j]) > $matchslop;
+						next OUTER if abs($nodelon{$nodes[$i + $j]} - $tlon[$j]) * $rat > $matchslop;
 					}
 
 					$found = $i;
@@ -248,10 +249,10 @@ for $way (keys(%nodes)) {
 							$newnodelat{$nodes[$found + $i]} = $nlat[$i];
 							$newnodelon{$nodes[$found + $i]} = $nlon[$i];
 
-							if (abs($nodelat{$nodes[$found + $i]} - $newnodelat{$nodes[$found + $i]}) > $slop) {
+							if (abs($nodelat{$nodes[$found + $i]} - $newnodelat{$nodes[$found + $i]}) > $moveslop) {
 								$moved{$nodes[$found + $i]} = 1;
 							}
-							if (abs($nodelon{$nodes[$found + $i]} - $newnodelon{$nodes[$found + $i]}) > $slop) {
+							if (abs($nodelon{$nodes[$found + $i]} - $newnodelon{$nodes[$found + $i]}) * $rat > $moveslop) {
 								$moved{$nodes[$found + $i]} = 1;
 							}
 						}
@@ -332,6 +333,26 @@ for $way (keys(%nodes)) {
 	}
 
 	@{$nodes{$way}} = @nodes;
+}
+
+for $way (keys(%nodes)) {
+	@nodes = @{$nodes{$way}};
+
+	for ($i = 1; $i < $#nodes; $i++) {
+		if ($moved{$nodes[$i]} && !$matched{$nodes[$i - 1]}) {
+			$transitional{$nodes[$i]} = 1;
+		}
+
+		if ($moved{$nodes[$i]} && !$matched{$nodes[$i + 1]}) {
+			$transitional{$nodes[$i]} = 1;
+		}
+	}
+}
+
+for $node (keys(%transitional)) {
+	print STDERR "$node is transitional\n";
+	$newnodelat{$node} = ($nodelat{$node} + $newnodelat{$node}) / 2;
+	$newnodelon{$node} = ($nodelon{$node} + $newnodelon{$node}) / 2;
 }
 
 if ($xml) {
