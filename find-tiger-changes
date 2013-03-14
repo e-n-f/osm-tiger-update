@@ -96,6 +96,14 @@ for $county (@counties) {
 			}
 		}
 	}
+	close(IN);
+
+	open(IN, "zcat ../../osm/tlid-ways/$county.gz |");
+	while (<IN>) {
+		chomp;
+		($tlid, $way) = split(/ /);
+		push @{$tlids{$way}}, $tlid;
+	}
 }
 
 $countybounds = "$minlon,$minlat,$maxlon,$maxlat";
@@ -161,7 +169,11 @@ while (<IN>) {
 	if (/<way id="([^"]*)/) {
 		$way = $1;
 		@nodes = ();
-		@tlids = ();
+		%newtlids = ();
+
+		for $t (@{$tlids{$way}}) {
+			$newtlids{$t} = 1;
+		}
 
 		while (<IN>) {
 			print OUT;
@@ -174,11 +186,18 @@ while (<IN>) {
 
 			if (/<tag k="tiger:tlid" v="([^"]*)/) {
 				@tlids = split(/[ ;:]+/, $1);
+				for $t (@tlids) {
+					$newtlids{$t} = 1;
+				}
 			}
 		}
 
 		@{$nodes{$way}} = @nodes;
-		@{$tlids{$way}} = @tlids;
+		@{$tlids{$way}} = ();
+
+		for $t (keys(%newtlids)) {
+			push @{$tlids{$way}}, $t;
+		}
 	}
 }
 
