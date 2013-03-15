@@ -368,6 +368,8 @@ for $way (keys(%nodes)) {
 						}
 					}
 
+					$tlidseen{$county}{$tlid} = 1;
+
 					if ($#tlat == $#nlat) {
 						for ($i = 0; $i <= $#tlat; $i++) {
 							$newnodelat{$nodes[$found + $i]} = $nlat[$i];
@@ -692,6 +694,28 @@ if ($xml) {
 
 	print "</osmChange>\n";
 } else {
+	print "1 .5 .5 setrgbcolor\n";
+
+	for $county (@counties) {
+		for $tlid (keys(%{$newlat{$county}})) {
+			@olat = @{$oldlat{$county}{$tlid}};
+
+			if ($#olat >= 0 && ! $tlidseen{$county}{$tlid}) {
+				@a = @{$newlat{$county}{$tlid}};
+				@o = @{$newlon{$county}{$tlid}};
+
+				for ($i = 0; $i <= $#a; $i++) {
+					printf("%.3f %.3f %s ",
+						($o[$i] - $minlon) * 612 / ($maxlon - $minlon),
+						($a[$i] - $minlat) * 612 / ($maxlat - $minlat),
+						$i == 0 ? "moveto" : "lineto");
+				}
+
+				print "stroke\n";
+			}
+		}
+	}
+
 	for $way (keys(%nodes)) {
 		@nodes = @{$nodes{$way}};
 		@tlids = @{$tlids{$way}};
