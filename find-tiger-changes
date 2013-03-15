@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
 use POSIX;
+use XML::Parser;
 
 $xml = 1;
 
@@ -163,40 +164,44 @@ open(IN, "./osmconvert $ENV{'HOME'}/north-america-latest.osm.pbf -b=$countybound
 
 $tmpfile = "/tmp/osm.$$";
 open(OUT, ">$tmpfile");
-
 while (<IN>) {
 	print OUT;
-	if (/<node id="([^"]*).*lat="([^"]*).*lon="([^"]*)/) {
-		$nodelat{$1} = $2;
-		$nodelon{$1} = $3;
-	}
+}
+close(OUT);
+close(IN);
 
-	if (/<way id="([^"]*)/) {
-		$way = $1;
+sub handle_start {
+	my ($expat, $element, @tags) = @_;
+	my %tags = @tags;
+
+	if ($element eq "node") {
+		$nodelat{$tags{'id'}} = $tags{'lat'};
+		$nodelon{$tags{'id'}} = $tags{'lon'};
+	} elsif ($element eq "way") {
+		$way = $tags{'id'};
 		@nodes = ();
 		%newtlids = ();
 
 		for $t (@{$tlids{$way}}) {
 			$newtlids{$t} = 1;
 		}
-
-		while (<IN>) {
-			print OUT;
-			last if (/<\/way/);
-
-			if (/<nd ref="([^"]*)/) {
-				push @nodes, $1;
-				$noderefs{$1}++;
-			}
-
-			if (/<tag k="tiger:tlid" v="([^"]*)/) {
-				@tlids = split(/[ ;:]+/, $1);
-				for $t (@tlids) {
-					$newtlids{$t} = 1;
-				}
+	} elsif ($element eq "nd") {
+		push @nodes, $tags{'ref'};
+		$noderefs{$tags{'ref'}}++;
+	} elsif ($element eq "tag") {
+		if ($tags{'k'} eq "tiger:tlid") {
+			@tlids = split(/[ ;:]+/, $tags{'v'});
+			for $t (@tlids) {
+				$newtlids{$t} = 1;
 			}
 		}
+	}
+}
 
+sub handle_end {
+	my ($expat, $element) = @_;
+
+	if ($element eq "way") {
 		@{$nodes{$way}} = @nodes;
 		@{$tlids{$way}} = ();
 
@@ -205,6 +210,10 @@ while (<IN>) {
 		}
 	}
 }
+
+$parser = new XML::Parser(Handlers => { Start => \&handle_start,
+					End   => \&handle_end });
+$parser->parsefile($tmpfile);
 
 for $way (keys(%nodes)) {
 	@nodes = @{$nodes{$way}};
