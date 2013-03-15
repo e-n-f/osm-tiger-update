@@ -22,9 +22,11 @@ $foot = .00000274;
 
 $matchslop = 25 * $foot;
 $moveslop = 2 * $foot;
+$verifyslop = 50 * $foot;
 
 $matchslop2 = $matchslop * $matchslop;
 $moveslop2 = $moveslop * $moveslop;
+$verifyslop2 = $verifyslop * $verifyslop;
 
 unless ($xml) {
 	print "0 setlinewidth\n";
@@ -215,6 +217,36 @@ $parser = new XML::Parser(Handlers => { Start => \&handle_start,
 					End   => \&handle_end });
 $parser->parsefile($tmpfile);
 
+# Check which nodes are already nearly in the right place according to TIGER,
+# since it is safe to relocate nodes adjacent to those.
+
+for $way (keys(%nodes)) {
+	@nodes = @{$nodes{$way}};
+	@tlids = @{$tlids{$way}};
+
+	TLID:
+	for $tlid (@tlids) {
+		for $county (@counties) {
+			@nlat = @{$newlat{$county}{$tlid}};
+			@nlon = @{$newlon{$county}{$tlid}};
+
+			for ($i = 0; $i <= $#nodes; $i++) {
+				for ($j = 0; $j <= $#nlat; $j++) {
+					$latd = abs($nodelat{$nodes[$i]} - $nlat[$j]);
+					$lond = abs($nodelon{$nodes[$i]} - $nlon[$j]) * $rat;
+
+					if ($latd * $latd + $lond * $lond < $verifyslop2) {
+						$verified{$nodes[$i]} = 1;
+						last;
+					}
+				}
+			}
+		}
+	}
+}
+
+# First pass: provisional matching of endpoints.
+
 for $way (keys(%nodes)) {
 	@nodes = @{$nodes{$way}};
 	@tlids = @{$tlids{$way}};
@@ -257,6 +289,83 @@ for $way (keys(%nodes)) {
 
 					for ($i = 0; $i <= $#tlat; $i++) {
 						$matched{$nodes[$found + $i]} = 1;
+					}
+
+					next TLID;
+				}
+
+				@tlat = reverse(@tlat);
+				@tlon = reverse(@tlon);
+
+				@nlat = reverse(@nlat);
+				@nlon = reverse(@nlon);
+			}
+		}
+	}
+}
+
+# Then inhibit anything that is matched but has a neighbor that is not matched or verified.
+
+$again = 1;
+while ($again) {
+	$again = 0;
+	for $way (keys(%nodes)) {
+		@nodes = @{$nodes{$way}};
+
+		for ($i = 1; $i <= $#nodes - 1; $i++) {
+			if ($matched{$nodes[$i]}) {
+				if (! (($matched{$nodes[$i - 1]} || $verified{$nodes[$i - 1]}) &&
+				       ($matched{$nodes[$i + 1]} || $verified{$nodes[$i + 1]}))) {
+					$matched{$nodes[$i]} = 0;
+					$again = 1;
+
+					print STDERR "node $nodes[$i] is inhibited: $nodelat{$nodes[$i]},$nodelon{$nodes[$i]}\n";
+				}
+			}
+		}
+	}
+}
+
+for $way (keys(%nodes)) {
+	@nodes = @{$nodes{$way}};
+	@tlids = @{$tlids{$way}};
+
+	TLID:
+	for $tlid (@tlids) {
+		for $county (@counties) {
+			@tlat = @{$oldlat{$county}{$tlid}};
+			@tlon = @{$oldlon{$county}{$tlid}};
+
+			@nlat = @{$newlat{$county}{$tlid}};
+			@nlon = @{$newlon{$county}{$tlid}};
+
+			next if $#tlat < 1 || $#nlat < 1;
+
+			for ($pass = 0; $pass < 2; $pass++) {
+				$found = -1;
+				OUTER:
+				for ($i = 0; $i <= $#nodes; $i++) {
+					next unless $matched{$nodes[$i]} && $matched{$nodes[$i + $#tlat]};
+
+					for ($j = 0; $j <= $#tlat; $j++) {
+						$latd = abs($nodelat{$nodes[$i + $j]} - $tlat[$j]);
+						$lond = abs($nodelon{$nodes[$i + $j]} - $tlon[$j]) * $rat;
+
+						next OUTER if $latd * $latd + $lond * $lond > $matchslop2;
+					}
+
+					$found = $i;
+					last OUTER;
+				}
+
+				if ($found != -1) {
+					for ($i = 1; $i <= $tlat - 1; $i++) {
+						if ($noderefs{$nodes[$found + $i]} != 1) {
+							print STDERR "Intermediate node $nodes[$found + $i] referenced by ";
+							print STDERR "$noderefs{$nodes[$found + $i]} ways\n";
+
+							next TLID;
+						}
 					}
 
 					if ($#tlat == $#nlat) {
@@ -350,88 +459,90 @@ for $way (keys(%nodes)) {
 	@{$nodes{$way}} = @nodes;
 }
 
-# Slight warps to adjacent reality if necessary to preserve consistency
+if (0) {
+	# Slight warps to adjacent reality if necessary to preserve consistency
 
-$again = 1;
-while ($again) {
-	$again = 0;
+	$again = 1;
+	while ($again) {
+		$again = 0;
 
-	for $way (keys(%nodes)) {
-		@nodes = @{$nodes{$way}};
+		for $way (keys(%nodes)) {
+			@nodes = @{$nodes{$way}};
 
-		{
-			for ($i = 0; $i <= $#nodes - 2; $i++) {
-				if ($moved{$nodes[$i]} && !$moved{$nodes[$i + 1]}) {
-					for ($j = $i + 1; $j <= $#nodes; $j++) {
-						last if $moved{$nodes[$j]};
-					}
+			{
+				for ($i = 0; $i <= $#nodes - 2; $i++) {
+					if ($moved{$nodes[$i]} && !$moved{$nodes[$i + 1]}) {
+						for ($j = $i + 1; $j <= $#nodes; $j++) {
+							last if $moved{$nodes[$j]};
+						}
 
-					next if !$moved{$nodes[$j]};
-					next if $nodelat{$nodes[$j]} == 0;
+						next if !$moved{$nodes[$j]};
+						next if $nodelat{$nodes[$j]} == 0;
 
-					#print STDERR "an adjacent block in $way is $nodes[$i] to $nodes[$j]:  ";
-					#print STDERR "$nodelat{$nodes[$i]},$nodelon{$nodes[$i]} to ";
-					#print STDERR "$nodelat{$nodes[$j]},$nodelon{$nodes[$j]}\n";
+						#print STDERR "an adjacent block in $way is $nodes[$i] to $nodes[$j]:  ";
+						#print STDERR "$nodelat{$nodes[$i]},$nodelon{$nodes[$i]} to ";
+						#print STDERR "$nodelat{$nodes[$j]},$nodelon{$nodes[$j]}\n";
 
-					$olati = $nodelat{$nodes[$i]};
-					$oloni = $nodelon{$nodes[$i]};
+						$olati = $nodelat{$nodes[$i]};
+						$oloni = $nodelon{$nodes[$i]};
 
-					$olatj = $nodelat{$nodes[$j]};
-					$olonj = $nodelon{$nodes[$j]};
+						$olatj = $nodelat{$nodes[$j]};
+						$olonj = $nodelon{$nodes[$j]};
 
-					$olatd = $olati - $olatj;
-					$olond = ($oloni - $olonj) * $rat;
-					$oang = atan2($olatd, $olond);
-					$odist = sqrt($olatd * $olatd + $olond * $olond);
+						$olatd = $olati - $olatj;
+						$olond = ($oloni - $olonj) * $rat;
+						$oang = atan2($olatd, $olond);
+						$odist = sqrt($olatd * $olatd + $olond * $olond);
 
-					next if ($odist == 0);
+						next if ($odist == 0);
 
-					$nlati = $newnodelat{$nodes[$i]};
-					$nloni = $newnodelon{$nodes[$i]};
+						$nlati = $newnodelat{$nodes[$i]};
+						$nloni = $newnodelon{$nodes[$i]};
 
-					$nlatj = $newnodelat{$nodes[$j]};
-					$nlonj = $newnodelon{$nodes[$j]};
+						$nlatj = $newnodelat{$nodes[$j]};
+						$nlonj = $newnodelon{$nodes[$j]};
 
-					$nlatd = $nlati - $nlatj;
-					$nlond = ($nloni - $nlonj) * $rat;
-					$nang = atan2($olatd, $olond);
-					$ndist = sqrt($nlatd * $nlatd + $nlond * $nlond);
+						$nlatd = $nlati - $nlatj;
+						$nlond = ($nloni - $nlonj) * $rat;
+						$nang = atan2($olatd, $olond);
+						$ndist = sqrt($nlatd * $nlatd + $nlond * $nlond);
 
-					#printf STDERR ("former angle %f dist %f\n", $oang * 180 / $pi, $odist);
-					#printf STDERR ("new angle %f dist %f\n", $nang * 180 / $pi, $ndist);
+						#printf STDERR ("former angle %f dist %f\n", $oang * 180 / $pi, $odist);
+						#printf STDERR ("new angle %f dist %f\n", $nang * 180 / $pi, $ndist);
 
-					for ($p = $i + 1; $p < $j; $p++) {
-						$plat = $nodelat{$nodes[$p]};
-						$plon = $nodelon{$nodes[$p]};
+						for ($p = $i + 1; $p < $j; $p++) {
+							$plat = $nodelat{$nodes[$p]};
+							$plon = $nodelon{$nodes[$p]};
 
-						$platd = $plat - $olatj;
-						$plond = ($plon - $olonj) * $rat;
-						$pang = atan2($platd, $plond);
-						$pdist = sqrt($platd * $platd + $plond * $plond);
+							$platd = $plat - $olatj;
+							$plond = ($plon - $olonj) * $rat;
+							$pang = atan2($platd, $plond);
+							$pdist = sqrt($platd * $platd + $plond * $plond);
 
-						#print STDERR ("intermediate $nodes[$p] $plat $plon ");
-						#printf STDERR ("angle %f dist %f\n", $pang * 180 / $pi, $pdist);
+							#print STDERR ("intermediate $nodes[$p] $plat $plon ");
+							#printf STDERR ("angle %f dist %f\n", $pang * 180 / $pi, $pdist);
 
-						$pdist *= $ndist/$odist;
-						$pang += $nang - $oang;
+							$pdist *= $ndist/$odist;
+							$pang += $nang - $oang;
 
-						$plat = $nlatj + $pdist * sin($pang);
-						$plon = $nlonj + $pdist * cos($pang) / $rat;
+							$plat = $nlatj + $pdist * sin($pang);
+							$plon = $nlonj + $pdist * cos($pang) / $rat;
 
-						#print STDERR ("for new pos $plat $plon ");
-						#printf STDERR ("replace with angle %f dist %f\n", $pang * 180 / $pi, $pdist);
+							#print STDERR ("for new pos $plat $plon ");
+							#printf STDERR ("replace with angle %f dist %f\n", $pang * 180 / $pi, $pdist);
 
-						$newnodelat{$nodes[$p]} = $plat;
-						$newnodelon{$nodes[$p]} = $plon;
-						$matched{$nodes[$p]} = 1;
-						$moved{$nodes[$p]} = 1;
+							$newnodelat{$nodes[$p]} = $plat;
+							$newnodelon{$nodes[$p]} = $plon;
+							$matched{$nodes[$p]} = 1;
+							$moved{$nodes[$p]} = 1;
 
-						$again = 1;
+							$again = 1;
+						}
 					}
 				}
-			}
 
-			@nodes = reverse(@nodes);
+				@nodes = reverse(@nodes);
+			}
 		}
 	}
 }
