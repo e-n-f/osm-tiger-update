@@ -589,7 +589,7 @@ sub handle_start2 {
 			print "\t\t<node";
 
 			for $tag (keys(%tags)) {
-				print " $tag=\"$tags{$tag}\"";
+				print " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
 			print ">\n";
@@ -610,7 +610,7 @@ sub handle_start2 {
 			print "\t\t<node";
 
 			for $tag (keys(%tags)) {
-				print " $tag=\"$tags{$tag}\"";
+				print " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
 			print ">\n";
@@ -635,7 +635,7 @@ sub handle_start2 {
 			print "\t\t<way";
 
 			for $tag (keys(%tags)) {
-				print " $tag=\"$tags{$tag}\"";
+				print " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
 			print ">\n";
