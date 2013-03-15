@@ -369,9 +369,9 @@ while ($again) {
 					next if !$moved{$nodes[$j]};
 					next if $nodelat{$nodes[$j]} == 0;
 
-					print STDERR "an adjacent block in $way is $nodes[$i] to $nodes[$j]:  ";
-					print STDERR "$nodelat{$nodes[$i]},$nodelon{$nodes[$i]} to ";
-					print STDERR "$nodelat{$nodes[$j]},$nodelon{$nodes[$j]}\n";
+					#print STDERR "an adjacent block in $way is $nodes[$i] to $nodes[$j]:  ";
+					#print STDERR "$nodelat{$nodes[$i]},$nodelon{$nodes[$i]} to ";
+					#print STDERR "$nodelat{$nodes[$j]},$nodelon{$nodes[$j]}\n";
 
 					$olati = $nodelat{$nodes[$i]};
 					$oloni = $nodelon{$nodes[$i]};
@@ -397,8 +397,8 @@ while ($again) {
 					$nang = atan2($olatd, $olond);
 					$ndist = sqrt($nlatd * $nlatd + $nlond * $nlond);
 
-					printf STDERR ("former angle %f dist %f\n", $oang * 180 / $pi, $odist);
-					printf STDERR ("new angle %f dist %f\n", $nang * 180 / $pi, $ndist);
+					#printf STDERR ("former angle %f dist %f\n", $oang * 180 / $pi, $odist);
+					#printf STDERR ("new angle %f dist %f\n", $nang * 180 / $pi, $ndist);
 
 					for ($p = $i + 1; $p < $j; $p++) {
 						$plat = $nodelat{$nodes[$p]};
@@ -409,8 +409,8 @@ while ($again) {
 						$pang = atan2($platd, $plond);
 						$pdist = sqrt($platd * $platd + $plond * $plond);
 
-						print STDERR ("intermediate $nodes[$p] $plat $plon ");
-						printf STDERR ("angle %f dist %f\n", $pang * 180 / $pi, $pdist);
+						#print STDERR ("intermediate $nodes[$p] $plat $plon ");
+						#printf STDERR ("angle %f dist %f\n", $pang * 180 / $pi, $pdist);
 
 						$pdist *= $ndist/$odist;
 						$pang += $nang - $oang;
@@ -418,8 +418,8 @@ while ($again) {
 						$plat = $nlatj + $pdist * sin($pang);
 						$plon = $nlonj + $pdist * cos($pang) / $rat;
 
-						print STDERR ("for new pos $plat $plon ");
-						printf STDERR ("replace with angle %f dist %f\n", $pang * 180 / $pi, $pdist);
+						#print STDERR ("for new pos $plat $plon ");
+						#printf STDERR ("replace with angle %f dist %f\n", $pang * 180 / $pi, $pdist);
 
 						$newnodelat{$nodes[$p]} = $plat;
 						$newnodelon{$nodes[$p]} = $plon;
@@ -457,6 +457,115 @@ if (0) {
 	}
 }
 
+sub quote {
+	$_ = @_[0];
+
+	s/&/&amp;/g;
+	s/</&lt;/g;
+	s/>/&gt;/g;
+	s/"/&quot;/g;
+
+	return $_;
+}
+
+sub handle_start2 {
+	my ($expat, $element, @tags) = @_;
+	my %tags = @tags;
+
+	if ($element eq "node") {
+		if ($newnodelat{$tags{'id'}} eq "delete") {
+			print "\t<delete>\n";
+			print "\t\t<node";
+
+			for $tag (keys(%tags)) {
+				print " $tag=\"$tags{$tag}\"";
+			}
+
+			print ">\n";
+			$moved{$id} = 0;
+
+			$section = "delete";
+			$printtags = 0;
+		} elsif ($moved{$tags{'id'}}) {
+			$tags{'lat'} = $newnodelat{$tags{'id'}};
+			$tags{'lon'} = $newnodelon{$tags{'id'}};
+			delete $tags{'changeset'};
+			delete $tags{'user'};
+			delete $tags{'uid'};
+			$tags{'version'} = $tags{'version'} + 1;
+			$tags{'timestamp'} = $timestamp;
+
+			print "\t<modify>\n";
+			print "\t\t<node";
+
+			for $tag (keys(%tags)) {
+				print " $tag=\"$tags{$tag}\"";
+			}
+
+			print ">\n";
+
+			$section = "modify";
+			$printtags = 1;
+		} else {
+			$section = "skip";
+			$printtags = 0;
+		}
+	} elsif ($element eq "way") {
+		$way = $tags{'id'};
+
+		if ($affected{$way}) {
+			delete $tags{'changeset'};
+			delete $tags{'user'};
+			delete $tags{'uid'};
+			$tags{'version'} = $tags{'version'} + 1;
+			$tags{'timestamp'} = $timestamp;
+
+			print "\t<modify>\n";
+			print "\t\t<way";
+
+			for $tag (keys(%tags)) {
+				print " $tag=\"$tags{$tag}\"";
+			}
+
+			print ">\n";
+
+			@nodes = @{$nodes{$way}};
+			for $node (@nodes) {
+				if ($newnodelat{$node} ne "delete") {
+					print "\t\t\t<nd ref=\"$node\"/>\n";
+				}
+			}
+
+			$section = "modify";
+			$printtags = 1;
+		} else {
+			$section = "skip";
+			$printtags = 0;
+		}
+	} elsif ($element eq "tag") {
+		if ($printtags) {
+			$k = quote($tags{'k'});
+			$v = quote($tags{'v'});
+
+			print "\t\t\t<tag k=\"$k\" v=\"$v\"/>\n";
+		}
+	}
+}
+
+sub handle_end2 {
+	my ($expat, $element) = @_;
+
+	if ($element eq "node" || $element eq "way") {
+		if ($section ne "skip") {
+			print "\t\t</$element>\n";
+			print "\t</$section>\n";
+		}
+
+		$section = "skip";
+		$printtags = 0;
+	}
+}
+
 if ($xml) {
 	print "\t<create>\n";
 
@@ -466,88 +575,11 @@ if ($xml) {
 
 	print "\t</create>\n";
 
-	open(IN, "$tmpfile");
-
-	while (<IN>) {
-		if (/<node id="([^"]*).*lat="([^"]*).*lon="([^"]*)/) {
-			$id = $1;
-
-			if ($newnodelat{$id} eq "delete") {
-				print "\t<delete>\n";
-				print "\t\t<node id=\"$id\"/>\n";
-				print "\t</delete>\n";
-				$moved{$id} = 0;
-			}
-
-			if ($moved{$id}) {
-				s/lat="[^"]*/lat=\"$newnodelat{$id}/;
-				s/lon="[^"]*/lon=\"$newnodelon{$id}/;
-				s/changeset="[^"]*"//;
-
-				if (/version="([^"]*)/) {
-					$version = $1 + 1;
-					s/version="[^"]*/version=\"$version/;
-				}
-
-				print "\t<modify>\n";
-				print "\t$_";
-			}
-
-			unless (/\/>/) {
-				while (<IN>) {
-					if ($moved{$id}) {
-						print "\t$_";
-					}
-
-					last if (/<\/node/);
-				}
-			}
-
-			if ($moved{$id}) {
-				print "\t</modify>\n";
-			}
-		}
-
-		if (/<way id="([^"]*)/) {
-			$way = $1;
-			@nodes = @{$nodes{$way}};
-			s/timestamp="[^"]*/timestamp=\"$timestamp/;
-			s/changeset="[^"]*"//;
-
-			if (/version="([^"]*)/) {
-				$version = $1 + 1;
-				s/version="[^"]*/version=\"$version/;
-			}
-
-			if ($affected{$way}) {
-				print "\t<modify>\n";
-				print "\t$_";
-				for $node (@nodes) {
-					if ($newnodelat{$node} ne "delete") {
-						print "\t\t\t<nd ref=\"$node\"/>\n";
-					}
-				}
-
-				while (<IN>) {
-					unless (/<nd/) {
-						print "\t$_";
-					}
-
-					last if (/<\/way/);
-				}
-
-				print "\t</modify>\n";
-			} else {
-				while (<IN>) {
-					last if (/<\/way/);
-				}
-			}
-		}
-	}
+	$parser = new XML::Parser(Handlers => { Start => \&handle_start2,
+						End   => \&handle_end2 });
+	$parser->parsefile($tmpfile);
 
 	print "</osmChange>\n";
-
-	close(IN);
 } else {
 	for $way (keys(%nodes)) {
 		@nodes = @{$nodes{$way}};
