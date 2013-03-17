@@ -5,12 +5,16 @@ use XML::Parser;
 
 $xml = 1;
 
-@counties = (
-	"18011", # Boone
-	"18057", # Hamilton
-	"18023", # Clinton
-	"18159", # Tipton
-);
+if ($#ARGV < 0) {
+	@counties = (
+		"18011", # Boone
+		"18057", # Hamilton
+		"18023", # Clinton
+		"18159", # Tipton
+	);
+} else {
+	@counties = @ARGV;
+}
 
 $minlat = 360;
 $minlon = 360;
@@ -28,14 +32,38 @@ $matchslop2 = $matchslop * $matchslop;
 $moveslop2 = $moveslop * $moveslop;
 $verifyslop2 = $verifyslop * $verifyslop;
 
+%county_number_map = (
+	"01" => "AL", "02" => "AK", "04" => "AZ", "05" => "AR", "06" => "CA",
+	"08" => "CO", "09" => "CT", "10" => "DE", "11" => "DC", "12" => "FL",
+	"13" => "GA", "15" => "HI", "16" => "ID", "17" => "IL", "18" => "IN",
+	"19" => "IA", "20" => "KS", "21" => "KY", "22" => "LA", "23" => "ME",
+	"24" => "MD", "25" => "MA", "26" => "MI", "27" => "MN", "28" => "MS",
+	"29" => "MO", "30" => "MT", "31" => "NE", "32" => "NV", "33" => "NH",
+	"34" => "NJ", "35" => "NM", "36" => "NY", "37" => "NC", "38" => "ND",
+	"39" => "OH", "40" => "OK", "41" => "OR", "42" => "PA", "44" => "RI",
+	"45" => "SC", "46" => "SD", "47" => "TN", "48" => "TX", "49" => "UT",
+	"50" => "VT", "51" => "VA", "53" => "WA", "54" => "WV", "55" => "WI",
+	"56" => "WY", "60" => "AS", "66" => "GU", "69" => "MP", "72" => "PR",
+	"78" => "VI",
+);
+
+unless (-f "north-america-latest.osm.pbf") {
+	system "curl -O http://download.geofabrik.de/north-america-latest.osm.pbf";
+}
+
+mkdir "tiger";
+
 unless ($xml) {
 	print "0 setlinewidth\n";
 }
 
 for $county (@counties) {
-	@files = <../../tiger/2006/www2.census.gov/geo/tiger/tiger2006se/*/TGR$county.ZIP>;
+	$state = $county_number_map{substr($county, 0, 2)};
+	$file = "TGR$county.ZIP";
 
-	open(IN, "unzip -p $files[0] TGR$county.RT2 |");
+	system "curl -o tiger/$file http://www2.census.gov/geo/tiger/tiger2006se/$state/$file";
+
+	open(IN, "unzip -p tiger/$file TGR$county.RT2 |");
 	while (<IN>) {
 		chomp;
 		$tlid = substr($_, 5, 10);
@@ -53,7 +81,7 @@ for $county (@counties) {
 	}
 	close(IN);
 
-	open(IN, "unzip -p $files[0] TGR$county.RT1 |");
+	open(IN, "unzip -p tiger/$file TGR$county.RT1 |");
 	while (<IN>) {
 		chomp;
 		$tlid = substr($_, 5, 10);
@@ -75,7 +103,11 @@ for $county (@counties) {
 
 for $county (@counties) {
 	print STDERR "read county $county\n";
-	open(IN, "java shpcat ../../tiger/2013/www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip |");
+
+	$file = "tl_rd13_${county}_edges.zip";
+	system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip";
+
+	open(IN, "java shpcat tiger/$file |");
 	while (<IN>) {
 		chomp;
 
