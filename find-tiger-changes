@@ -107,7 +107,7 @@ for $county (@counties) {
 	}
 	close(IN);
 
-	open(IN, "zcat ../../osm/tlid-ways/$county.gz |");
+	open(IN, "curl https://raw.github.com/ericfischer/tlid-ways/master/tlid-ways/$county |");
 	while (<IN>) {
 		chomp;
 		($tlid, $way) = split(/ /);
