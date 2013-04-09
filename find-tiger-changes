@@ -53,6 +53,32 @@ unless (-f "north-america-latest.osm.pbf") {
 
 mkdir "tiger";
 
+%states = ();
+for $county (@counties) {
+	$state = substr($county, 0, 2);
+	$states{$state} = 1;
+}
+@states = keys(%states);
+
+open(IN, "state-bboxes");
+while (<IN>) {
+	chomp;
+	($state, $lat1, $lon1, $lat2, $lon2) = split(/ /);
+	$minlat{$state} = $lat1;
+	$minlon{$state} = $lon1;
+	$maxlat{$state} = $lat2;
+	$maxlon{$state} = $lon2;
+}
+
+if ($#states == 0) {
+	for $state (@states) {
+		unless (-f "tiger/state-$state.osm.pbf") {
+			print STDERR "Extract state $state\n";
+			system "time ./osmconvert --out-pbf -b=$minlon{$state},$minlat{$state},$maxlon{$state},$maxlat{$state} north-america-latest.osm.pbf > tiger/state-$state.osm.pbf";
+		}
+	}
+}
+
 unless ($xml) {
 	print "0 setlinewidth\n";
 }
@@ -61,7 +87,9 @@ for $county (@counties) {
 	$state = $county_number_map{substr($county, 0, 2)};
 	$file = "TGR$county.ZIP";
 
-	system "curl -o tiger/$file http://www2.census.gov/geo/tiger/tiger2006se/$state/$file";
+	unless (-f "tiger/$file") {
+		system "curl -o tiger/$file http://www2.census.gov/geo/tiger/tiger2006se/$state/$file";
+	}
 
 	open(IN, "unzip -p tiger/$file TGR$county.RT2 |");
 	while (<IN>) {
@@ -105,7 +133,9 @@ for $county (@counties) {
 	print STDERR "read county $county\n";
 
 	$file = "tl_rd13_${county}_edges.zip";
-	system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip";
+	unless (-f "tiger/$file") {
+		system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip";
+	}
 
 	open(IN, "java shpcat tiger/$file |");
 	while (<IN>) {
@@ -194,7 +224,11 @@ if ($xml) {
 	}
 }
 
-open(IN, "./osmconvert $ENV{'HOME'}/north-america-latest.osm.pbf -b=$countybounds |");
+if ($#states != 0) {
+	open(IN, "./osmconvert north-america-latest.osm.pbf -b=$countybounds |");
+} else {
+	open(IN, "./osmconvert tiger/state-$state.osm.pbf -b=$countybounds |");
+}
 
 $tmpfile = "/tmp/osm.$$";
 open(OUT, ">$tmpfile");
