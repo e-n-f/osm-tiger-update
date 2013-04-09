@@ -5,6 +5,11 @@ use XML::Parser;
 
 $xml = 1;
 
+if ($ARGV[0] eq '-p') {
+	$xml = 0;
+	shift @ARGV;
+}
+
 if ($#ARGV < 0) {
 	@counties = (
 		"18011", # Boone
