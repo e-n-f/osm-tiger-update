@@ -109,6 +109,8 @@ for $county (@counties) {
 			if ($lat != 0) {
 				push @{$oldlat{$county}{$tlid}}, $lat;
 				push @{$oldlon{$county}{$tlid}}, $lon;
+
+				push @{$loctlids{"$lat$lon"}}, $tlid;
 			}
 		}
 	}
@@ -130,6 +132,9 @@ for $county (@counties) {
 
 		push @{$oldlat{$county}{$tlid}}, $endlat;
 		push @{$oldlon{$county}{$tlid}}, $endlon;
+
+		push @{$loctlids{"$startlat$startlon"}}, $tlid;
+		push @{$loctlids{"$endlat$endlon"}}, $tlid;
 	}
 	close(IN);
 }
@@ -276,11 +281,22 @@ sub handle_end {
 
 	if ($element eq "way") {
 		@{$nodes{$way}} = @nodes;
-		@{$tlids{$way}} = ();
+		%tl = ();
 
 		for $t (keys(%newtlids)) {
-			push @{$tlids{$way}}, $t;
+			$tl{$t} = 1;
 		}
+
+		for $n (@nodes) {
+			$lat = $nodelat{$n};
+			$lon = $nodelon{$n};
+
+			for $t (@{$loctlids{"$lat$lon"}}) {
+				$tl{$t} = 1;
+			}
+		}
+
+		@{$tlids{$way}} = keys(%tl);
 	}
 }
 
@@ -390,7 +406,12 @@ while ($again) {
 					$matched{$nodes[$i]} = 0;
 					$again = 1;
 
+if (0) {
 					print STDERR "node $nodes[$i] is inhibited: $nodelat{$nodes[$i]},$nodelon{$nodes[$i]}\n";
+					print STDERR "matched is $matched{$nodes[$i]}\n";
+					print STDERR "prev is $nodes[$i - 1] which is $matched{$nodes[$i - 1]} || $verified{$nodes[$i - 1]}\n";
+					print STDERR "next is $nodes[$i + 1] which is $matched{$nodes[$i + 1]} || $verified{$nodes[$i + 1]}\n";
+}
 				}
 			}
 		}
