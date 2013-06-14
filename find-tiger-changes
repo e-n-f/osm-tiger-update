@@ -12,8 +12,9 @@ if ($ARGV[0] eq '-p') {
 	# Yellow: Additions made since 2006 to TIGER, not in OpenStreetMap.
 	# Light green: Additions made directly to OpenStreetMap, not from TIGER.
 	# Dark green: Ways imported from TIGER and subsequently edited in OpenStreetMap.
-	# Light blue: Ways imported from TIGER, unchanged in OpenStreetMap.
+	# Medium blue: Ways imported from TIGER, unchanged in OpenStreetMap.
 	# Dark blue: Ways imported from TIGER that could be updated to TIGER 2013.
+	# Pale blue: Ways imported from TIGER, split in TIGER 2013 but located
 	# Pink: Ways that are in TiGER 2006 and TIGER 2013 but not in OSM.
 }
 
@@ -130,6 +131,31 @@ for $county (@counties) {
 		$endlon = substr($_, 209, 10) / 1000000;
 		$endlat = substr($_, 219, 9) / 1000000;
 
+		$dirp = substr($_, 17, 2);
+		$name = substr($_, 19, 30);
+		$type = substr($_, 49, 4);
+		$dirs = substr($_, 53, 2);
+
+		$addrls = substr($_, 58, 11);
+		$addrle = substr($_, 69, 11);
+		$addrrs = substr($_, 80, 11);
+		$addrre = substr($_, 91, 11);
+		$addrls =~ s/ *//g;
+		$addrle =~ s/ *//g;
+		$addrrs =~ s/ *//g;
+		$addrre =~ s/ *//g;
+
+		$fullname = "$dirp $name $type $dirs";
+		$fullname =~ s/^ *//;
+		$fullname =~ s/ *$//;
+		$fullname =~ s/ +/ /g;
+
+		$fullname{$tlid} = $fullname;
+		$addrls{$tlid} = $addrls;
+		$addrle{$tlid} = $addrle;
+		$addrrs{$tlid} = $addrrs;
+		$addrre{$tlid} = $addrre;
+
 		unshift @{$oldlat{$county}{$tlid}}, $startlat;
 		unshift @{$oldlon{$county}{$tlid}}, $startlon;
 
@@ -154,7 +180,7 @@ for $county (@counties) {
 	while (<IN>) {
 		chomp;
 
-		($state, $cty, $tlid) = split(/\|/);
+		($state, $cty, $tlid, $tfidl, $tfidr, $mtfcc, $fullname, $smid, $addrls, $addrle, $addrrs, $addrre) = split(/\|/);
 		$tlid =~ s/^ *//;
 		next unless $tlid =~ /^[0-9]/;
 
@@ -179,8 +205,128 @@ for $county (@counties) {
 				$maxlon = $lon;
 			}
 		}
+
+		($startlon, $startlat) = split(/,/, $points[0]);
+		($endlon, $endlat) = split(/,/, $points[$#points]);
+
+		if ($oldlat{$county}{$tlid}[0] == 0) {
+			# This TLID was not known in old TIGER
+			# so index its name and address ranges
+
+			$fullname =~ s/ *$//;
+
+			if ($fullname ne "") {
+				$addrls =~ s/ *//g;
+				$addrle =~ s/ *//g;
+				$addrrs =~ s/ *//g;
+				$addrre =~ s/ *//g;
+
+				if ($addrls ne "") {
+					$newtlid{"$fullname: $addrls"} = $tlid;
+					$opposite{"$fullname: $addrls"} = "$endlat,$endlon";
+					$direction{"$fullname: $addrls"} = 1;
+				}
+				if ($addrle ne "") {
+					$newtlid{"$fullname: $addrle"} = $tlid;
+					$opposite{"$fullname: $addrle"} = "$startlat,$startlon";
+					$direction{"$fullname: $addrle"} = -1;
+				}
+				if ($addrrs ne "") {
+					$newtlid{"$fullname: $addrrs"} = $tlid;
+					$opposite{"$fullname: $addrrs"} = "$endlat,$endlon";
+					$direction{"$fullname: $addrrs"} = 1;
+				}
+				if ($addrre ne "") {
+					$newtlid{"$fullname: $addrre"} = $tlid;
+					$opposite{"$fullname: $addrre"} = "$startlat,$startlon";
+					$direction{"$fullname: $addrre"} = -1;
+				}
+			}
+		}
 	}
 	close(IN);
+
+	# Now do another round through the old TLIDs for the county:
+	#
+	# If any TLID is unknown in new TIGER,
+	# but its start and end points have addresses that are part of new TLIDs
+	# and those two new TLIDs share their other endpoint
+	# then those two new TLIDs must be the split of the old TLID
+
+	for $tlid (keys(%{$oldlat{$county}})) {
+		if ($newlat{$county}{$tlid}[0] == 0) {
+			# print "$tlid $fullname{$tlid}: in old tiger, not in new\n";
+
+			@start = ("$fullname{$tlid}: $addrls{$tlid}", "$fullname{$tlid}: $addrrs{$tlid}");
+			@end = ("$fullname{$tlid}: $addrle{$tlid}", "$fullname{$tlid}: $addrre{$tlid}");
+
+			SEARCH:
+			for $s (@start) {
+				for $e (@end) {
+					if ($newtlid{$s} ne "" && $newtlid{$e} ne "") {
+						if ($opposite{$s} eq $opposite{$e}) {
+							# print "looks like $newtlid{$s} to $newtlid{$e} via $opposite{$s} $direction{$s},$direction{$e}\n";
+
+							@sa = @{$newlat{$county}{$newtlid{$s}}};
+							@so = @{$newlon{$county}{$newtlid{$s}}};
+
+							@ea = @{$newlat{$county}{$newtlid{$e}}};
+							@eo = @{$newlon{$county}{$newtlid{$e}}};
+
+							push @used, $newtlid{$e};
+							push @used, $newtlid{$s};
+
+							if ($direction{$s} > 0) {
+								for ($i = 0; $i <= $#sa; $i++) {
+									push @{$newlat{$county}{$tlid}}, $sa[$i];
+									push @{$newlon{$county}{$tlid}}, $so[$i];
+									$reconstructed{"$sa[$i] $so[$i]"} = 1;
+
+									# print "$sa[$i],$so[$i] ";
+								}
+							} else {
+								for ($i = $#sa; $i >= 0; $i--) {
+									push @{$newlat{$county}{$tlid}}, $sa[$i];
+									push @{$newlon{$county}{$tlid}}, $so[$i];
+									$reconstructed{"$sa[$i] $so[$i]"} = 1;
+
+									# print "$sa[$i],$so[$i] ";
+								}
+							}
+
+							if ($direction{$e} < 0) {
+								for ($i = 1; $i <= $#ea; $i++) {
+									push @{$newlat{$county}{$tlid}}, $ea[$i];
+									push @{$newlon{$county}{$tlid}}, $eo[$i];
+									$reconstructed{"$ea[$i] $eo[$i]"} = 1;
+
+									# print "$ea[$i],$eo[$i] ";
+								}
+							} else {
+								for ($i = $#ea - 1; $i >= 0; $i--) {
+									push @{$newlat{$county}{$tlid}}, $ea[$i];
+									push @{$newlon{$county}{$tlid}}, $eo[$i];
+									$reconstructed{"$ea[$i] $eo[$i]"} = 1;
+
+									# print "$ea[$i],$eo[$i] ";
+								}
+							}
+
+							# print "\n";
+							last SEARCH;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	for $u (@used) {
+		delete $newlat{$county}{$u};
+		delete $newlon{$county}{$u};
+	}
+
+	@used = ();
 
 	open(IN, "curl https://raw.github.com/ericfischer/tlid-ways/master/tlid-ways/$county |");
 	while (<IN>) {
@@ -879,7 +1025,12 @@ if ($xml) {
 					if ($moved{$nodes[$i]} || $moved{$nodes[$i + 1]}) {
 						# One or both ends moved in new TIGER
 
-						$out_corrected .= "0 0 .6 setrgbcolor ";
+
+						if ($reconstructed{"$newnodelat{$nodes[$i]} $newnodelon{$nodes[$i]}"}) {
+							$out_corrected .= ".64 .64 1 setrgbcolor ";
+						} else {
+							$out_corrected .= "0 0 .6 setrgbcolor ";
+						}
 
 						if ($moved{$nodes[$i]}) {
 							$startlat = $newnodelat{$nodes[$i]};
