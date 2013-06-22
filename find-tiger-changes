@@ -136,6 +136,15 @@ for $county (@counties) {
 		$type = substr($_, 49, 4);
 		$dirs = substr($_, 53, 2);
 
+		$statel = substr($_, 130, 2);
+		$stater = substr($_, 132, 2);
+		$countyl = substr($_, 134, 3);
+		$countyr = substr($_, 137, 3);
+		$tractl = substr($_, 170, 6);
+		$tractr = substr($_, 176, 6);
+		$blockl = substr($_, 182, 4);
+		$blockr = substr($_, 186, 4);
+
 		$addrls = substr($_, 58, 11);
 		$addrle = substr($_, 69, 11);
 		$addrrs = substr($_, 80, 11);
@@ -156,6 +165,9 @@ for $county (@counties) {
 		$addrrs{$tlid} = $addrrs;
 		$addrre{$tlid} = $addrre;
 
+		$blockleft{$county}{$tlid} = "$statel$countyl$tractl$blockl";
+		$blockright{$county}{$tlid} = "$stater$countyr$tractr$blockr";
+
 		unshift @{$oldlat{$county}{$tlid}}, $startlat;
 		unshift @{$oldlon{$county}{$tlid}}, $startlon;
 
@@ -171,9 +183,25 @@ for $county (@counties) {
 for $county (@counties) {
 	print STDERR "read county $county\n";
 
-	$file = "tl_rd13_${county}_edges.zip";
+	$file = "tl_2010_${county}_tabblock00.zip";
 	unless (-f "tiger/$file") {
-		system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGERrd13/EDGES/tl_rd13_${county}_edges.zip";
+		system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGER2010/TABBLOCK/2000/tl_2010_${county}_tabblock00.zip";
+	}
+
+	open(IN, "java shpcat tiger/$file |");
+	while (<IN>) {
+		chomp;
+		next unless /polygon/;
+
+		($state, $cty, $tract, $block) = split(/\|/);
+		s/.*polygon //;
+		$poly{"$state$cty$tract$block"} = $_;
+	}
+	close(IN);
+
+	$file = "tl_2010_${county}_edges.zip";
+	unless (-f "tiger/$file") {
+		system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGER2010/EDGES/tl_2010_${county}_edges.zip";
 	}
 
 	open(IN, "java shpcat tiger/$file |");
@@ -246,6 +274,50 @@ for $county (@counties) {
 	}
 	close(IN);
 
+	if (0) {
+		# Work in progress, matching TLIDs that no longer exist in new TIGER
+		# to sections of the Census 2000 compatibility block polygons
+
+		for $tlid (keys(%{$oldlat{$county}})) {
+			if ($newlat{$county}{$tlid}[0] == 0) {
+				print STDERR "TLID $tlid is between blocks $blockleft{$county}{$tlid} and $blockright{$county}{$tlid}\n";
+
+				@p1 = split(/ /, $poly{$blockleft{$county}{$tlid}});
+				@p2 = split(/ /, $poly{$blockright{$county}{$tlid}});
+
+				for ($pass = 0; $pass < 2; $pass++) {
+					OUTER:
+					for ($i = 0; $i <= $#p1; $i++) {
+						for ($j = 0; $j <= $#p2; $j++) {
+							for ($k = 0; $i + $k <= $#p1 && $j + $k <= $#p2; $k++) {
+								last if ($p1[$i + $k] ne $p2[$j + $k]);
+								last if ($p1[$i + $k] eq ";");
+								last if ($p2[$j + $k] eq ";");
+							}
+
+							if ($k >= 2) {
+								print STDERR "match: at $i $j $k, ";
+
+								for ($n = 0; $n < $k; $n++) {
+									($lon, $lat) = split(/,/, $p1[$i + $n]);
+									print STDERR "$lat,$lon ";
+								}
+
+								print STDERR "\n\n";
+
+								$i += $k - 1;
+								next OUTER;
+							}
+						}
+					}
+
+					@p2 = reverse(@p2);
+				}
+			}
+		}
+	}
+
+if (0) {
 	# Now do another round through the old TLIDs for the county:
 	#
 	# If any TLID is unknown in new TIGER,
@@ -327,6 +399,7 @@ for $county (@counties) {
 	}
 
 	@used = ();
+}
 
 	open(IN, "curl https://raw.github.com/ericfischer/tlid-ways/master/tlid-ways/$county |");
 	while (<IN>) {
