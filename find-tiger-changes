@@ -37,9 +37,9 @@ $maxlon = -360;
 $pi = 4 * atan2(1, 1);
 $foot = .00000274;
 
-$matchslop = 25 * $foot;
+$matchslop = 5 * $foot;
 $moveslop = 2 * $foot;
-$verifyslop = 50 * $foot;
+$verifyslop = 25 * $foot;
 
 $matchslop2 = $matchslop * $matchslop;
 $moveslop2 = $moveslop * $moveslop;
@@ -627,10 +627,10 @@ while ($again) {
 	for $way (keys(%nodes)) {
 		@nodes = @{$nodes{$way}};
 
-		for ($i = 1; $i <= $#nodes - 1; $i++) {
+		for ($i = 0; $i <= $#nodes; $i++) {
 			if ($matched{$nodes[$i]}) {
-				if (! (($matched{$nodes[$i - 1]} || $verified{$nodes[$i - 1]}) &&
-				       ($matched{$nodes[$i + 1]} || $verified{$nodes[$i + 1]}))) {
+				if (! (($i - 1 < 0 || $matched{$nodes[$i - 1]} || $verified{$nodes[$i - 1]}) &&
+				       ($i + 1 > $#nodes || $matched{$nodes[$i + 1]} || $verified{$nodes[$i + 1]}))) {
 					$matched{$nodes[$i]} = 0;
 					$again = 1;
 
