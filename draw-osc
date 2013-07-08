@@ -1,0 +1,33 @@
+#!/usr/bin/perl
+
+while (<>) {
+	if (/<node.*lat="([^"]*)".*lon="([^"]*).*id="([^"]*)"/) {
+		$lat = $1;
+		$lon = $2;
+		$id = $3;
+
+		$lat{$id} = $lat;
+		$lon{$id} = $lon;
+	}
+
+	if (/<nd ref="([^"]*)"/) {
+		push @nodes, $1;
+	}
+
+	if (/<\/way/) {
+		for ($i = 0; $i < $#nodes; $i++) {
+			if ($lat{$nodes[$i]} != 0 && $lat{$nodes[$i + 1]} != 0) {
+				print "$lat{$nodes[$i]},$lon{$nodes[$i]} ";
+				print "$lat{$nodes[$i + 1]},$lon{$nodes[$i + 1]}\n";
+			}
+		}
+
+		@nodes = ();
+	}
+
+	if (/<osmChange/) {
+		@nodes = ();
+		%lat = ();
+		%lon = ();
+	}
+}
