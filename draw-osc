@@ -10,6 +10,15 @@ while (<>) {
 		$lon{$id} = $lon;
 	}
 
+	if (/<node.*id="([^"]*)".*lat="([^"]*).*lon="([^"]*)"/) {
+		$id = $1;
+		$lat = $2;
+		$lon = $3;
+
+		$lat{$id} = $lat;
+		$lon{$id} = $lon;
+	}
+
 	if (/<nd ref="([^"]*)"/) {
 		push @nodes, $1;
 	}
