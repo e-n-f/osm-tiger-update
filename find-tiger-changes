@@ -3,6 +3,8 @@
 use POSIX;
 use XML::Parser;
 
+binmode(STDOUT, ":utf8");
+
 $xml = 1;
 
 if ($ARGV[0] eq '-p') {
@@ -85,9 +87,20 @@ while (<IN>) {
 
 if ($#states == 0) {
 	for $state (@states) {
+		sleep(rand(1));
+
+		while (-f "extract.lock") {
+			sleep(1);
+		}
+
 		unless (-f "tiger/state-$state.osm.pbf") {
+			open(OUT, ">extract.lock");
+			close(OUT);
+
 			print STDERR "Extract state $state\n";
 			system "time ./osmconvert --out-pbf -b=$minlon{$state},$minlat{$state},$maxlon{$state},$maxlat{$state} north-america-latest.osm.pbf > tiger/state-$state.osm.pbf";
+
+			unlink("extract.lock");
 		}
 	}
 }
@@ -183,21 +196,23 @@ for $county (@counties) {
 for $county (@counties) {
 	print STDERR "read county $county\n";
 
-	$file = "tl_2010_${county}_tabblock00.zip";
-	unless (-f "tiger/$file") {
-		system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGER2010/TABBLOCK/2000/tl_2010_${county}_tabblock00.zip";
-	}
+	if (0) {
+		$file = "tl_2010_${county}_tabblock00.zip";
+		unless (-f "tiger/$file") {
+			system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGER2010/TABBLOCK/2000/tl_2010_${county}_tabblock00.zip";
+		}
 
-	open(IN, "java shpcat tiger/$file |");
-	while (<IN>) {
-		chomp;
-		next unless /polygon/;
+		open(IN, "java shpcat tiger/$file |");
+		while (<IN>) {
+			chomp;
+			next unless /polygon/;
 
-		($state, $cty, $tract, $block) = split(/\|/);
-		s/.*polygon //;
-		$poly{"$state$cty$tract$block"} = $_;
+			($state, $cty, $tract, $block) = split(/\|/);
+			s/.*polygon //;
+			$poly{"$state$cty$tract$block"} = $_;
+		}
+		close(IN);
 	}
-	close(IN);
 
 	$file = "tl_2010_${county}_edges.zip";
 	unless (-f "tiger/$file") {
@@ -920,6 +935,8 @@ sub handle_start2 {
 			$section = "delete";
 			$printtags = 0;
 		} elsif ($moved{$tags{'id'}}) {
+			$old = "$tags{'lat'},$tags{'lon'}";
+
 			$tags{'lat'} = $newnodelat{$tags{'id'}};
 			$tags{'lon'} = $newnodelon{$tags{'id'}};
 			delete $tags{'changeset'};
@@ -936,6 +953,8 @@ sub handle_start2 {
 			}
 
 			print ">\n";
+
+			# print "\t\t<!-- was $old -->\n";
 
 			$section = "modify";
 			$printtags = 1;
