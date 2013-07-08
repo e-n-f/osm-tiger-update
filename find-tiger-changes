@@ -717,6 +717,9 @@ for $way (keys(%nodes)) {
 								$moved{$nodes[$found + $i]} = 1;
 							}
 						}
+
+						# Not really necessary, but helps visualize XXX
+						$affected{$way} = 1;
 					} elsif ($#tlat > $#nlat) {
 						# Use as many old nodes as necessary - 1 for new positions
 
@@ -905,6 +908,31 @@ if (0) {
 	}
 }
 
+if (0) {
+	for $way (keys(%nodes)) {
+		@nodes = @{$nodes{$way}};
+
+		for $node (@nodes) {
+			if ($moved{$node}) {
+				$affected{$way} = 1;
+			}
+		}
+
+		if ($affected{$way}) {
+			for ($i = 0; $i <= $#nodes; $i++) {
+				if ($moved{$nodes[$i]}) {
+					if ($i - 1 >= 0) {
+						$affectednode{$nodes[$i - 1]} = 1;
+					}
+					if ($i + 1 <= $#nodes) {
+						$affectednode{$nodes[$i + 1]} = 1;
+					}
+				}
+			}
+		}
+	}
+}
+
 sub quote {
 	$_ = @_[0];
 
@@ -934,7 +962,7 @@ sub handle_start2 {
 
 			$section = "delete";
 			$printtags = 0;
-		} elsif ($moved{$tags{'id'}}) {
+		} elsif ($moved{$tags{'id'}} || $affectednode{$tags{'id'}}) {
 			$old = "$tags{'lat'},$tags{'lon'}";
 
 			$tags{'lat'} = $newnodelat{$tags{'id'}};
