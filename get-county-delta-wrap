@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if test -f out/$1.osc
+then :
+else
+	echo county $1 >&2
+	./find-tiger-changes $1 > out/$1.osc
+fi

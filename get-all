@@ -1,0 +1,8 @@
+#!/bin/sh
+
+find /data/data/tiger/2006/www2.census.gov/geo/tiger/tiger2006se/ |
+grep TGR |
+sed 's/.*TGR//' |
+sed 's/.ZIP//' |
+sort |
+xargs -P 8 -n 1 ./get-county-delta-wrap
