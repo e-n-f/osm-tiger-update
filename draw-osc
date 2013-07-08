@@ -1,6 +1,11 @@
 #!/usr/bin/perl
 
 while (<>) {
+	if ($ARGV ne $oargv) {
+		print STDERR "$ARGV\n";
+		$oargv = $ARGV;
+	}
+
 	if (/<node.*lat="([^"]*)".*lon="([^"]*).*id="([^"]*)"/) {
 		$lat = $1;
 		$lon = $2;
