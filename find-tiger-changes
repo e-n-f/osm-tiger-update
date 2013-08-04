@@ -944,20 +944,22 @@ sub quote {
 	return $_;
 }
 
+$out = "";
+
 sub handle_start2 {
 	my ($expat, $element, @tags) = @_;
 	my %tags = @tags;
 
 	if ($element eq "node") {
 		if ($newnodelat{$tags{'id'}} eq "delete") {
-			print "\t<delete>\n";
-			print "\t\t<node";
+			$out .= "\t<delete>\n";
+			$out .= "\t\t<node";
 
 			for $tag (keys(%tags)) {
-				print " $tag=\"" . quote($tags{$tag}) . "\"";
+				$out .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
-			print ">\n";
+			$out .= ">\n";
 			$moved{$id} = 0;
 
 			$section = "delete";
@@ -973,14 +975,14 @@ sub handle_start2 {
 			delete $tags{'version'};
 			delete $tags{'timestamp'};
 
-			print "\t<modify>\n";
-			print "\t\t<node";
+			$out .= "\t<modify>\n";
+			$out .= "\t\t<node";
 
 			for $tag (keys(%tags)) {
-				print " $tag=\"" . quote($tags{$tag}) . "\"";
+				$out .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
-			print ">\n";
+			$out .= ">\n";
 
 			# print "\t\t<!-- was $old -->\n";
 
@@ -1000,19 +1002,19 @@ sub handle_start2 {
 			delete $tags{'version'};
 			delete $tags{'timestamp'};
 
-			print "\t<modify>\n";
-			print "\t\t<way";
+			$out .= "\t<modify>\n";
+			$out .= "\t\t<way";
 
 			for $tag (keys(%tags)) {
-				print " $tag=\"" . quote($tags{$tag}) . "\"";
+				$out .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
-			print ">\n";
+			$out .= ">\n";
 
 			@nodes = @{$nodes{$way}};
 			for $node (@nodes) {
 				if ($newnodelat{$node} ne "delete") {
-					print "\t\t\t<nd ref=\"$node\"/>\n";
+					$out .= "\t\t\t<nd ref=\"$node\"/>\n";
 				}
 			}
 
@@ -1027,7 +1029,7 @@ sub handle_start2 {
 			$k = quote($tags{'k'});
 			$v = quote($tags{'v'});
 
-			print "\t\t\t<tag k=\"$k\" v=\"$v\"/>\n";
+			$out .= "\t\t\t<tag k=\"$k\" v=\"$v\"/>\n";
 		}
 	}
 }
@@ -1037,8 +1039,8 @@ sub handle_end2 {
 
 	if ($element eq "node" || $element eq "way") {
 		if ($section ne "skip") {
-			print "\t\t</$element>\n";
-			print "\t</$section>\n";
+			$out .= "\t\t</$element>\n";
+			$out .= "\t</$section>\n";
 		}
 
 		$section = "skip";
@@ -1047,19 +1049,24 @@ sub handle_end2 {
 }
 
 if ($xml) {
-	print "\t<create>\n";
+	$out .= "\t<create>\n";
 
 	for ($i = $gensym; $i < 0; $i++) {
-		print "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
+		$out .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
 	}
 
-	print "\t</create>\n";
+	$out .= "\t</create>\n";
 
 	$parser = new XML::Parser(Handlers => { Start => \&handle_start2,
 						End   => \&handle_end2 });
 	$parser->parsefile($tmpfile);
 
-	print "</osmChange>\n";
+	$out .= "</osmChange>\n";
+
+	$out =~ s/\t<\/modify\>\n\t<modify>\n//g;
+	$out =~ s/\t<\/delete\>\n\t<delete>\n//g;
+
+	print $out;
 } else {
 	if (0) {
 		print "1 .5 .5 setrgbcolor\n";
