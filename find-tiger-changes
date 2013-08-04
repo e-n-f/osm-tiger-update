@@ -1029,7 +1029,15 @@ sub handle_start2 {
 			$k = quote($tags{'k'});
 			$v = quote($tags{'v'});
 
-			$out .= "\t\t\t<tag k=\"$k\" v=\"$v\"/>\n";
+			if ($k ne "created_by" &&
+			    $k ne "tiger:upload_uuid" &&
+			    $k ne "tiger:tlid" &&
+			    $k ne "tiger:source" &&
+			    $k ne "tiger:separated" &&
+			    $k ne "odbl" &&
+			    $k ne "odbl:note") {
+				$out .= "\t\t\t<tag k=\"$k\" v=\"$v\"/>\n";
+			}
 		}
 	}
 }
