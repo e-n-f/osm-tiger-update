@@ -719,7 +719,7 @@ for $way (keys(%nodes)) {
 						}
 
 						# Not really necessary, but helps visualize XXX
-						$affected{$way} = 1;
+						# $affected{$way} = 1;
 					} elsif ($#tlat > $#nlat) {
 						# Use as many old nodes as necessary - 1 for new positions
 
