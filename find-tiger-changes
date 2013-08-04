@@ -970,8 +970,8 @@ sub handle_start2 {
 			delete $tags{'changeset'};
 			delete $tags{'user'};
 			delete $tags{'uid'};
-			$tags{'version'} = $tags{'version'} + 1;
-			$tags{'timestamp'} = $timestamp;
+			delete $tags{'version'};
+			delete $tags{'timestamp'};
 
 			print "\t<modify>\n";
 			print "\t\t<node";
@@ -997,8 +997,8 @@ sub handle_start2 {
 			delete $tags{'changeset'};
 			delete $tags{'user'};
 			delete $tags{'uid'};
-			$tags{'version'} = $tags{'version'} + 1;
-			$tags{'timestamp'} = $timestamp;
+			delete $tags{'version'};
+			delete $tags{'timestamp'};
 
 			print "\t<modify>\n";
 			print "\t\t<way";
@@ -1050,7 +1050,7 @@ if ($xml) {
 	print "\t<create>\n";
 
 	for ($i = $gensym; $i < 0; $i++) {
-		print "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\" version=\"1\" timestamp=\"$timestamp\"/>\n";
+		print "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
 	}
 
 	print "\t</create>\n";
