@@ -944,7 +944,8 @@ sub quote {
 	return $_;
 }
 
-$out = "";
+$output = "main";
+%out = ();
 
 sub handle_start2 {
 	my ($expat, $element, @tags) = @_;
@@ -952,14 +953,16 @@ sub handle_start2 {
 
 	if ($element eq "node") {
 		if ($newnodelat{$tags{'id'}} eq "delete") {
-			$out .= "\t<delete>\n";
-			$out .= "\t\t<node";
+			$output = "delete";
+
+			$out{$output} .= "\t<delete>\n";
+			$out{$output} .= "\t\t<node";
 
 			for $tag (keys(%tags)) {
-				$out .= " $tag=\"" . quote($tags{$tag}) . "\"";
+				$out{$output} .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
-			$out .= ">\n";
+			$out{$output} .= ">\n";
 			$moved{$id} = 0;
 
 			$section = "delete";
@@ -975,14 +978,14 @@ sub handle_start2 {
 			delete $tags{'version'};
 			delete $tags{'timestamp'};
 
-			$out .= "\t<modify>\n";
-			$out .= "\t\t<node";
+			$out{$output} .= "\t<modify>\n";
+			$out{$output} .= "\t\t<node";
 
 			for $tag (keys(%tags)) {
-				$out .= " $tag=\"" . quote($tags{$tag}) . "\"";
+				$out{$output} .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
-			$out .= ">\n";
+			$out{$output} .= ">\n";
 
 			# print "\t\t<!-- was $old -->\n";
 
@@ -1002,19 +1005,19 @@ sub handle_start2 {
 			delete $tags{'version'};
 			delete $tags{'timestamp'};
 
-			$out .= "\t<modify>\n";
-			$out .= "\t\t<way";
+			$out{$output} .= "\t<modify>\n";
+			$out{$output} .= "\t\t<way";
 
 			for $tag (keys(%tags)) {
-				$out .= " $tag=\"" . quote($tags{$tag}) . "\"";
+				$out{$output} .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
-			$out .= ">\n";
+			$out{$output} .= ">\n";
 
 			@nodes = @{$nodes{$way}};
 			for $node (@nodes) {
 				if ($newnodelat{$node} ne "delete") {
-					$out .= "\t\t\t<nd ref=\"$node\"/>\n";
+					$out{$output} .= "\t\t\t<nd ref=\"$node\"/>\n";
 				}
 			}
 
@@ -1036,7 +1039,7 @@ sub handle_start2 {
 			    $k ne "tiger:separated" &&
 			    $k ne "odbl" &&
 			    $k ne "odbl:note") {
-				$out .= "\t\t\t<tag k=\"$k\" v=\"$v\"/>\n";
+				$out{$output} .= "\t\t\t<tag k=\"$k\" v=\"$v\"/>\n";
 			}
 		}
 	}
@@ -1047,34 +1050,36 @@ sub handle_end2 {
 
 	if ($element eq "node" || $element eq "way") {
 		if ($section ne "skip") {
-			$out .= "\t\t</$element>\n";
-			$out .= "\t</$section>\n";
+			$out{$output} .= "\t\t</$element>\n";
+			$out{$output} .= "\t</$section>\n";
 		}
 
 		$section = "skip";
+		$output = "main";
 		$printtags = 0;
 	}
 }
 
 if ($xml) {
-	$out .= "\t<create>\n";
+	$out{$output} .= "\t<create>\n";
 
 	for ($i = $gensym; $i < 0; $i++) {
-		$out .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
+		$out{$output} .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
 	}
 
-	$out .= "\t</create>\n";
+	$out{$output} .= "\t</create>\n";
 
 	$parser = new XML::Parser(Handlers => { Start => \&handle_start2,
 						End   => \&handle_end2 });
 	$parser->parsefile($tmpfile);
 
-	$out .= "</osmChange>\n";
+	$out{"main"} =~ s/\t<\/modify\>\n\t<modify>\n//g;
+	$out{"delete"} =~ s/\t<\/delete\>\n\t<delete>\n//g;
 
-	$out =~ s/\t<\/modify\>\n\t<modify>\n//g;
-	$out =~ s/\t<\/delete\>\n\t<delete>\n//g;
+	print $out{"main"};
+	print $out{"delete"};
 
-	print $out;
+	print "</osmChange>\n";
 } else {
 	if (0) {
 		print "1 .5 .5 setrgbcolor\n";
