@@ -1,8 +1,8 @@
 #!/bin/sh
 
-if test -f out/$1.osc
+if test -f out/$1-0000.osc
 then :
 else
 	echo county $1 >&2
-	./find-tiger-changes $1 > out/$1.osc
+	./find-tiger-changes $1
 fi
