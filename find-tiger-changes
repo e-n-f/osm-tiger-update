@@ -1096,7 +1096,7 @@ if ($xml) {
 
 		if ($len + 1 + $#nodes + 1 + $#deletes + 1 > 20000) {
 			print OUT "</osmChange>\n";
-			open(OUT, sprintf(">out/%s/%-04d.osc", $outfile, $seq++));
+			open(OUT, sprintf(">out/%s-%04d.osc", $outfile, $seq++));
 			print OUT "<osmChange version=\"0.6\" generator=\"2013 TIGER update\">\n";
 
 			$len = 0;
