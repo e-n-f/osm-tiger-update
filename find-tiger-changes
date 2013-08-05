@@ -1061,13 +1061,15 @@ sub handle_end2 {
 }
 
 if ($xml) {
-	$out{$output} .= "\t<create>\n";
+	if ($gensym < 0) {
+		$out{$output} .= "\t<create>\n";
 
-	for ($i = $gensym; $i < 0; $i++) {
-		$out{$output} .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
+		for ($i = $gensym; $i < 0; $i++) {
+			$out{$output} .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
+		}
+
+		$out{$output} .= "\t</create>\n";
 	}
-
-	$out{$output} .= "\t</create>\n";
 
 	$parser = new XML::Parser(Handlers => { Start => \&handle_start2,
 						End   => \&handle_end2 });
