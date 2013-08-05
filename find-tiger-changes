@@ -981,8 +981,8 @@ sub handle_start2 {
 			delete $tags{'changeset'};
 			delete $tags{'user'};
 			delete $tags{'uid'};
-			delete $tags{'version'};
-			delete $tags{'timestamp'};
+			$tags{'version'} = $tags{'version'} + 1;
+			$tags{'timestamp'} = $timestamp;
 
 			$output = "node-$tags{'id'}";
 
@@ -1010,8 +1010,8 @@ sub handle_start2 {
 			delete $tags{'changeset'};
 			delete $tags{'user'};
 			delete $tags{'uid'};
-			delete $tags{'version'};
-			delete $tags{'timestamp'};
+			$tags{'version'} = $tags{'version'} + 1;
+			$tags{'timestamp'} = $timestamp;
 
 			$output = "way-$tags{'id'}";
 
@@ -1071,6 +1071,7 @@ sub handle_end2 {
 
 if ($xml) {
 	open(OUT, sprintf(">out/%s-%04d.osc", $outfile, $seq++));
+	binmode(OUT, ":utf8");
 	print OUT "<osmChange version=\"0.6\" generator=\"2013 TIGER update\">\n";
 
 	if ($gensym < 0) {
@@ -1079,7 +1080,7 @@ if ($xml) {
 			$output = "node-$i";
 
 			$out{$output} .= "\t<create>\n";
-			$out{$output} .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
+			$out{$output} .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\" version=\"1\" timestamp=\"$timestamp\"/>\n";
 			$out{$output} .= "\t</create>\n";
 		}
 	}
@@ -1097,6 +1098,7 @@ if ($xml) {
 		if ($len + 1 + $#nodes + 1 + $#deletes + 1 > 20000) {
 			print OUT "</osmChange>\n";
 			open(OUT, sprintf(">out/%s-%04d.osc", $outfile, $seq++));
+			binmode(OUT, ":utf8");
 			print OUT "<osmChange version=\"0.6\" generator=\"2013 TIGER update\">\n";
 
 			$len = 0;
