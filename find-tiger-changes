@@ -958,7 +958,7 @@ sub handle_start2 {
 			$out{$output} .= "\t<delete>\n";
 			$out{$output} .= "\t\t<node";
 
-			for $tag (keys(%tags)) {
+			for $tag (sort(keys(%tags))) {
 				$out{$output} .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
@@ -981,7 +981,7 @@ sub handle_start2 {
 			$out{$output} .= "\t<modify>\n";
 			$out{$output} .= "\t\t<node";
 
-			for $tag (keys(%tags)) {
+			for $tag (sort(keys(%tags))) {
 				$out{$output} .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
@@ -1008,7 +1008,7 @@ sub handle_start2 {
 			$out{$output} .= "\t<modify>\n";
 			$out{$output} .= "\t\t<way";
 
-			for $tag (keys(%tags)) {
+			for $tag (sort(keys(%tags))) {
 				$out{$output} .= " $tag=\"" . quote($tags{$tag}) . "\"";
 			}
 
