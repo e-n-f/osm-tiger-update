@@ -31,6 +31,12 @@ if ($#ARGV < 0) {
 	@counties = @ARGV;
 }
 
+$outfile = "";
+for $county (@counties) {
+	$outfile .= $county;
+}
+$seq = 0;
+
 $minlat = 360;
 $minlon = 360;
 $maxlat = -360;
@@ -437,7 +443,6 @@ if ($xml) {
 	$timestamp = sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", $year + 1900, $mon + 1, $mday,
 		$hour, $min, $sec);
 
-	print "<osmChange version=\"0.6\" generator=\"2013 TIGER update\">\n";
 } else {
 	if (($maxlon - $minlon) * $rat > $maxlat - $minlat) {
 		$dimension = ($maxlon - $minlon) * $rat;
@@ -733,6 +738,7 @@ for $way (keys(%nodes)) {
 
 						for ($i = $#nlat; $i <= $#tlat - 1; $i++) {
 							if ($xml) {
+								push @{$deletes{$way}}, $nodes[$found + $i];
 								$newnodelat{$nodes[$found + $i]} = "delete";
 								$newnodelon{$nodes[$found + $i]} = "delete";
 							} else {
@@ -953,7 +959,7 @@ sub handle_start2 {
 
 	if ($element eq "node") {
 		if ($newnodelat{$tags{'id'}} eq "delete") {
-			$output = "delete";
+			$output = "delete-$tags{'id'}";
 
 			$out{$output} .= "\t<delete>\n";
 			$out{$output} .= "\t\t<node";
@@ -977,6 +983,8 @@ sub handle_start2 {
 			delete $tags{'uid'};
 			delete $tags{'version'};
 			delete $tags{'timestamp'};
+
+			$output = "node-$tags{'id'}";
 
 			$out{$output} .= "\t<modify>\n";
 			$out{$output} .= "\t\t<node";
@@ -1004,6 +1012,8 @@ sub handle_start2 {
 			delete $tags{'uid'};
 			delete $tags{'version'};
 			delete $tags{'timestamp'};
+
+			$output = "way-$tags{'id'}";
 
 			$out{$output} .= "\t<modify>\n";
 			$out{$output} .= "\t\t<way";
@@ -1055,33 +1065,73 @@ sub handle_end2 {
 		}
 
 		$section = "skip";
-		$output = "main";
 		$printtags = 0;
 	}
 }
 
 if ($xml) {
+	open(OUT, sprintf(">out/%s-%04d.osc", $outfile, $seq++));
+	print OUT "<osmChange version=\"0.6\" generator=\"2013 TIGER update\">\n";
+
 	if ($gensym < 0) {
-		$out{$output} .= "\t<create>\n";
 
 		for ($i = $gensym; $i < 0; $i++) {
-			$out{$output} .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
-		}
+			$output = "node-$i";
 
-		$out{$output} .= "\t</create>\n";
+			$out{$output} .= "\t<create>\n";
+			$out{$output} .= "\t\t<node id=\"$i\" lat=\"$newnodelat{$i}\" lon=\"$newnodelon{$i}\"/>\n";
+			$out{$output} .= "\t</create>\n";
+		}
 	}
 
 	$parser = new XML::Parser(Handlers => { Start => \&handle_start2,
 						End   => \&handle_end2 });
 	$parser->parsefile($tmpfile);
 
-	$out{"main"} =~ s/\t<\/modify\>\n\t<modify>\n//g;
-	$out{"delete"} =~ s/\t<\/delete\>\n\t<delete>\n//g;
+	$out = "";
 
-	print $out{"main"};
-	print $out{"delete"};
+	for $way (sort { $a <=> $b } (keys(%nodes))) {
+		@nodes = @{$nodes{$way}};
+		@deletes = @{$deletes{$way}};
 
-	print "</osmChange>\n";
+		if ($len + 1 + $#nodes + 1 + $#deletes + 1 > 20000) {
+			print OUT "</osmChange>\n";
+			open(OUT, sprintf(">out/%s/%-04d.osc", $outfile, $seq++));
+			print OUT "<osmChange version=\"0.6\" generator=\"2013 TIGER update\">\n";
+
+			$len = 0;
+		}
+
+		for $n (@nodes) {
+			if ($out{"node-$n"} ne "") {
+				$len++;
+				$out .= $out{"node-$n"};
+				$out{"node-$n"} = "";
+			}
+		}
+
+		if ($out{"way-$way"} ne "") {
+			$len++;
+			$out .= $out{"way-$way"};
+		}
+
+		for $n (@deletes) {
+			if ($out{"delete-$n"} ne "") {
+				$len++;
+				$out .= $out{"delete-$n"};
+				$out{"delete-$n"} = "";
+			}
+		}
+
+		$out =~ s/\t<\/modify\>\n\t<modify>\n//g;
+		$out =~ s/\t<\/delete\>\n\t<delete>\n//g;
+		$out =~ s/\t<\/create\>\n\t<create>\n//g;
+
+		print OUT "$out";
+		$out = "";
+	}
+
+	print OUT "</osmChange>\n";
 } else {
 	if (0) {
 		print "1 .5 .5 setrgbcolor\n";
