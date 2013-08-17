@@ -227,8 +227,66 @@ for $b (keys(%newblocklat)) {
 	}
 }
 
+sub find_intersection {
+	my @tlids = @_;
+	my %common = ();
+	my %this = ();
+	my $i, $j;
+	my $s1, $s2;
+	my @a1, @o1, @a2, @o2;
+
+	for ($i = 0; $i <= $#tlids; $i++) {
+		%this = ();
+
+		for $s1 (keys(%{$newblocklat{$blockl{$tlids[$i]}}})) {
+			@a1 = @{$newblocklat{$blockl{$tlids[$i]}}{$s1}};
+			@o1 = @{$newblocklon{$blockl{$tlids[$i]}}{$s1}};
+
+			for ($j = 0; $j <= $#a1; $j++) {
+				$this{"$a1[$j],$o1[$j]"} = 1;
+			}
+		}
+
+		for $s2 (keys(%{$newblocklat{$blockr{$tlids[$i]}}})) {
+			@a2 = @{$newblocklat{$blockr{$tlids[$i]}}{$s2}};
+			@o2 = @{$newblocklon{$blockr{$tlids[$i]}}{$s2}};
+
+			for ($j = 0; $j <= $#a2; $j++) {
+				$this{"$a2[$j],$o2[$j]"} = 1;
+			}
+		}
+
+		if ($i == 0) {
+			%common = %this;
+		} else {
+			for $j (keys(%common)) {
+				if ($this{$j} != 1) {
+					# print STDERR "eliminate $j\n";
+					delete $common{$j};
+				}
+			}
+		}
+	}
+
+	if (0) {
+		print STDERR "surviving: ";
+		for $j (keys(%common)) {
+			print STDERR "$j ";
+		}
+		print STDERR "\n";
+	}
+
+	my @survive = keys(%common);
+
+	if ($#survive == 0) {
+		return split(/,/, $survive[0]);
+	} else {
+		return (0, 0);
+	}
+}
+
 for $tlid (keys(%oldlat)) {
-	next unless $cfcc{$tlid} =~ /^A/ || $cfcc{$tlid} =~ /^B/;  # roads, railroads
+	# next unless $cfcc{$tlid} =~ /^A/ || $cfcc{$tlid} =~ /^B/;  # roads, railroads
 
 	@oldlat = @{$oldlat{$tlid}};
 	@oldlon = @{$oldlon{$tlid}};
@@ -281,6 +339,17 @@ for $tlid (keys(%oldlat)) {
 			}
 		}
 
+		if ($startlat == 0) {
+			%shared = ();
+			for (@{$tlid_starts{$start}}, @{$tlid_ends{$start}}) {
+				$shared{$_} = 1;
+			}
+			@shared = keys(%shared);
+			$n = $#shared + 1;
+			print STDERR "$n tlids share $start\n";
+			($startlat, $startlon) = find_intersection(@shared);
+		}
+
 		# print "which means $start is now $startlat,$startlon\n";
 
 		for $tlid (@{$tlid_starts{$end}}) {
@@ -299,6 +368,17 @@ for $tlid (keys(%oldlat)) {
 				$endlat = $a[$#a];
 				$endlon = $o[$#o];
 			}
+		}
+
+		if ($endlat == 0) {
+			%shared = ();
+			for (@{$tlid_starts{$end}}, @{$tlid_ends{$end}}) {
+				$shared{$_} = 1;
+			}
+			@shared = keys(%shared);
+			$n = $#shared + 1;
+			print STDERR "$n tlids share $end\n";
+			($endlat, $endlon) = find_intersection(@shared);
 		}
 
 		# print "and $end is now $endlat,$endlon\n";
