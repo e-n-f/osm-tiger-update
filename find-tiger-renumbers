@@ -160,11 +160,26 @@ while (<IN>) {
 	s/.*polygon //;
 	@points = split(/ /, $_);
 
+	if (defined($newblocklat{"$state$cty$tract$block"})) {
+		print STDERR "dup block $state$cty$tract$block\n";
+	}
+
+	$within = "";
+	$subpoly = 0;
+
 	for $p (@points) {
 		if ($p ne ";") {
+			if ($within eq "") {
+				$within = $p;
+			} elsif ($p eq $within) {
+				$subpoly++;
+				$within = "";
+				next;
+			}
+
 			($lon, $lat) = split(/,/, $p);
-			push @{$newblocklat{"$state$cty$tract$block"}}, $lat;
-			push @{$newblocklon{"$state$cty$tract$block"}}, $lon;
+			push @{$newblocklat{"$state$cty$tract$block"}{$subpoly}}, $lat;
+			push @{$newblocklon{"$state$cty$tract$block"}{$subpoly}}, $lon;
 		}
 	}
 }
@@ -186,6 +201,31 @@ $maxlat = $lat + $dimension / 2;
 $maxlon = $lon + ($dimension / $rat / 2);
 
 printf("%.3f setlinewidth\n", 20 * $foot * 612 / ($maxlat - $minlat));
+
+#print ".3 .setopacityalpha\n";
+print "1 1 0 setrgbcolor\n";
+
+for $b (keys(%newblocklat)) {
+	for $s (keys(%{$newblocklat{$b}})) {
+		@lat = @{$newblocklat{$b}{$s}};
+		@lon = @{$newblocklon{$b}{$s}};
+
+		for ($i = 0; $i <= $#lat; $i++) {
+			printf("%.3f %.3f ",
+				($lon[$i] - $minlon) * 612 / ($maxlon - $minlon),
+				($lat[$i] - $minlat) * 612 / ($maxlat - $minlat),
+			);
+
+			if ($i == 0) {
+				print "moveto ";
+			} else {
+				print "lineto ";
+			}
+		}
+
+		print "stroke\n";
+	}
+}
 
 for $tlid (keys(%oldlat)) {
 	next unless $cfcc{$tlid} =~ /^A/ || $cfcc{$tlid} =~ /^B/;  # roads, railroads
@@ -263,55 +303,59 @@ for $tlid (keys(%oldlat)) {
 
 		# print "and $end is now $endlat,$endlon\n";
 
-		@a1 = @{$newblocklat{$blockl{$tlid}}};
-		@o1 = @{$newblocklon{$blockl{$tlid}}};
-
-		@a2 = @{$newblocklat{$blockr{$tlid}}};
-		@o2 = @{$newblocklon{$blockr{$tlid}}};
-
 		%found = ();
 		%len = ();
 
-		for ($pass = 0; $pass < 4; $pass++) {
-			if ($pass == 0) {
-				@a = (@a1, @a1);
-				@o = (@o1, @o1);
-				$in = "left";
-			} elsif ($pass == 1) {
-				@a = reverse(@a1, @a1);
-				@o = reverse(@o1, @o1);
-				$in = "left";
-			} elsif ($pass == 2) {
-				@a = (@a2, @a2);
-				@o = (@o2, @o2);
-				$in = "right";
-			} elsif ($pass == 1) {
-				@a = reverse(@a2, @a2);
-				@o = reverse(@o2, @o2);
-				$in = "right";
-			}
+		for $s1 (keys(%{$newblocklat{$blockl{$tlid}}})) {
+			for $s2 (keys(%{$newblocklat{$blockr{$tlid}}})) {
+				@a1 = @{$newblocklat{$blockl{$tlid}}{$s1}};
+				@o1 = @{$newblocklon{$blockl{$tlid}}{$s1}};
 
-			I:
-			for ($i = 0; $i <= $#a; $i++) {
-				if ($a[$i] == $startlat && $o[$i] == $startlon) {
-					for ($j = $i + 1; $j <= $#a; $j++) {
-						if ($a[$j] == $endlat && $o[$j] == $endlon) {
-							$d = 0;
-							for ($k = $i; $k < $j; $k++) {
-								$latd = $a[$k + 1] - $a[$k];
-								$lond = $o[$k + 1] - $o[$k]; # XXX rat
-								$d += sqrt($latd * $latd + $lond * $lond);
+				@a2 = @{$newblocklat{$blockr{$tlid}}{$s2}};
+				@o2 = @{$newblocklon{$blockr{$tlid}}{$s2}};
+
+				for ($pass = 0; $pass < 4; $pass++) {
+					if ($pass == 0) {
+						@a = (@a1, @a1);
+						@o = (@o1, @o1);
+						$in = "left";
+					} elsif ($pass == 1) {
+						@a = reverse(@a1, @a1);
+						@o = reverse(@o1, @o1);
+						$in = "left";
+					} elsif ($pass == 2) {
+						@a = (@a2, @a2);
+						@o = (@o2, @o2);
+						$in = "right";
+					} elsif ($pass == 1) {
+						@a = reverse(@a2, @a2);
+						@o = reverse(@o2, @o2);
+						$in = "right";
+					}
+
+					I:
+					for ($i = 0; $i <= $#a; $i++) {
+						if ($a[$i] == $startlat && $o[$i] == $startlon) {
+							for ($j = $i + 1; $j <= $#a; $j++) {
+								if ($a[$j] == $endlat && $o[$j] == $endlon) {
+									$d = 0;
+									for ($k = $i; $k < $j; $k++) {
+										$latd = $a[$k + 1] - $a[$k];
+										$lond = $o[$k + 1] - $o[$k]; # XXX rat
+										$d += sqrt($latd * $latd + $lond * $lond);
+									}
+
+									$string = "";
+									for ($k = $i; $k <= $j; $k++) {
+										$string .= "$a[$k],$o[$k] ";
+									}
+
+									$found{$string}{$in} = 1;
+									$len{$string} = $d;
+
+									next I;
+								}
 							}
-
-							$string = "";
-							for ($k = $i; $k <= $j; $k++) {
-								$string .= "$a[$k],$o[$k] ";
-							}
-
-							$found{$string}{$in} = 1;
-							$len{$string} = $d;
-
-							next I;
 						}
 					}
 				}
@@ -325,7 +369,7 @@ for $tlid (keys(%oldlat)) {
 		for $s (@string) {
 			if ($found{$s}{"left"} && $found{$s}{"right"}) {
 				if ($string ne "") {
-					print STDERR "$tlid replace old match $string\n";
+					# print STDERR "$tlid replace old match $string\n";
 				}
 
 				$string = $s;
