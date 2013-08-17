@@ -15,6 +15,11 @@ if ($#ARGV < 0) {
 $pi = 4 * atan2(1, 1);
 $foot = .00000274;
 
+$minlat = 360;
+$minlon = 360;
+$maxlat = -360;
+$maxlon = -360;
+
 %county_number_map = (
 	"01" => "AL", "02" => "AK", "04" => "AZ", "05" => "AR", "06" => "CA",
 	"08" => "CO", "09" => "CT", "10" => "DE", "11" => "DC", "12" => "FL",
@@ -161,20 +166,55 @@ while (<IN>) {
 	}
 }
 
-for $tlid (keys(%oldlat)) {
-	if (!defined($newlat{$tlid})) {
-		print "only in old: $tlid $blockl{$tlid} and $blockr{$tlid}: $name{$tlid}\n";
+$rat = cos(($minlat + $maxlat) / 2 * $pi / 180);
 
-		@oldlat = @{$oldlat{$tlid}};
-		@oldlon = @{$oldlon{$tlid}};
+if (($maxlon - $minlon) * $rat > $maxlat - $minlat) {
+	$dimension = ($maxlon - $minlon) * $rat;
+} else {
+	$dimension = $maxlat - $minlat;
+}
+
+$lat = ($maxlat + $minlat) / 2;
+$lon = ($maxlon + $minlon) / 2;
+
+$minlat = $lat - $dimension / 2;
+$minlon = $lon - ($dimension / $rat / 2);
+$maxlat = $lat + $dimension / 2;
+$maxlon = $lon + ($dimension / $rat / 2);
+
+printf("%.3f setlinewidth\n", 20 * $foot * 612 / ($maxlat - $minlat));
+
+for $tlid (keys(%oldlat)) {
+	@oldlat = @{$oldlat{$tlid}};
+	@oldlon = @{$oldlon{$tlid}};
+
+	print ".8 .8 .8 setrgbcolor\n";
+
+	for ($i = 0; $i <= $#oldlat; $i++) {
+		printf("%.3f %.3f ",
+			($oldlon[$i] - $minlon) * 612 / ($maxlon - $minlon),
+			($oldlat[$i] - $minlat) * 612 / ($maxlat - $minlat),
+		);
+
+		if ($i == 0) {
+			print "moveto ";
+		} else {
+			print "lineto ";
+		}
+	}
+
+	print "stroke\n";
+
+	if (!defined($newlat{$tlid})) {
+		# print "only in old: $tlid $blockl{$tlid} and $blockr{$tlid}: $name{$tlid}\n";
 
 		$start = "$oldlat[0],$oldlon[0]";
 		$end = "$oldlat[$#oldlat],$oldlon[$#oldlon]";
 
-		print "which used to be $start to $end\n";
+		# print "which used to be $start to $end\n";
 
-		print "at $start started @{$tlid_starts{$start}} and ended @{$tlid_ends{$start}}\n";
-		print "at $end started @{$tlid_starts{$end}} and ended @{$tlid_ends{$end}}\n";
+		# print "at $start started @{$tlid_starts{$start}} and ended @{$tlid_ends{$start}}\n";
+		# print "at $end started @{$tlid_starts{$end}} and ended @{$tlid_ends{$end}}\n";
 
 		$startlat = $startlon = $endlat = $endlon = 0;
 
@@ -196,7 +236,7 @@ for $tlid (keys(%oldlat)) {
 			}
 		}
 
-		print "which means $start is now $startlat,$startlon\n";
+		# print "which means $start is now $startlat,$startlon\n";
 
 		for $tlid (@{$tlid_starts{$end}}) {
 			@a = @{$newlat{$tlid}};
@@ -216,7 +256,7 @@ for $tlid (keys(%oldlat)) {
 			}
 		}
 
-		print "and $end is now $endlat,$endlon\n";
+		# print "and $end is now $endlat,$endlon\n";
 
 		@a1 = @{$newblocklat{$blockl{$tlid}}};
 		@o1 = @{$newblocklon{$blockl{$tlid}}};
@@ -263,6 +303,48 @@ for $tlid (keys(%oldlat)) {
 			}
 		}
 
-		print "-> $string\n\n";
+		if ($string ne "") {
+			print "1 0 0 setrgbcolor\n";
+			@pts = split(/ /, $string);
+
+			for ($i = 0; $i <= $#pts; $i++) {
+				($lat, $lon) = split(/,/, $pts[$i]);
+
+				printf("%.3f %.3f ",
+					($lon - $minlon) * 612 / ($maxlon - $minlon),
+					($lat - $minlat) * 612 / ($maxlat - $minlat),
+				);
+
+				if ($i == 0) {
+					print "moveto ";
+				} else {
+					print "lineto ";
+				}
+			}
+
+			print "stroke\n";
+		}
+
+		# print "-> $string\n\n";
+	} else {
+		@newlat = @{$newlat{$tlid}};
+		@newlon = @{$newlon{$tlid}};
+
+		print "0 0 1 setrgbcolor\n";
+
+		for ($i = 0; $i <= $#newlat; $i++) {
+			printf("%.3f %.3f ",
+				($newlon[$i] - $minlon) * 612 / ($maxlon - $minlon),
+				($newlat[$i] - $minlat) * 612 / ($maxlat - $minlat),
+			);
+
+			if ($i == 0) {
+				print "moveto ";
+			} else {
+				print "lineto ";
+			}
+		}
+
+		print "stroke\n";
 	}
 }
