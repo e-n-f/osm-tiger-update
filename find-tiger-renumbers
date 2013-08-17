@@ -269,22 +269,26 @@ for $tlid (keys(%oldlat)) {
 		@a2 = @{$newblocklat{$blockr{$tlid}}};
 		@o2 = @{$newblocklon{$blockr{$tlid}}};
 
-		$best = 9999999;
-		$string = "";
+		%found = ();
+		%len = ();
 
 		for ($pass = 0; $pass < 4; $pass++) {
 			if ($pass == 0) {
 				@a = (@a1, @a1);
 				@o = (@o1, @o1);
+				$in = "left";
 			} elsif ($pass == 1) {
 				@a = reverse(@a1, @a1);
 				@o = reverse(@o1, @o1);
+				$in = "left";
 			} elsif ($pass == 2) {
 				@a = (@a2, @a2);
 				@o = (@o2, @o2);
+				$in = "right";
 			} elsif ($pass == 1) {
 				@a = reverse(@a2, @a2);
 				@o = reverse(@o2, @o2);
+				$in = "right";
 			}
 
 			I:
@@ -298,14 +302,14 @@ for $tlid (keys(%oldlat)) {
 								$lond = $o[$k + 1] - $o[$k]; # XXX rat
 								$d += sqrt($latd * $latd + $lond * $lond);
 							}
-							if ($d < $best) {
-								$best = $d;
 
-								$string = "";
-								for ($k = $i; $k <= $j; $k++) {
-									$string .= "$a[$k],$o[$k] ";
-								}
+							$string = "";
+							for ($k = $i; $k <= $j; $k++) {
+								$string .= "$a[$k],$o[$k] ";
 							}
+
+							$found{$string}{$in} = 1;
+							$len{$string} = $d;
 
 							next I;
 						}
@@ -314,7 +318,31 @@ for $tlid (keys(%oldlat)) {
 			}
 		}
 
+		$string = "";
+		@string = sort { $len{$a} <=> $len{$b} } keys(%len);
+		$both = 0;
+
+		for $s (@string) {
+			if ($found{$s}{"left"} && $found{$s}{"right"}) {
+				if ($string ne "") {
+					print STDERR "$tlid replace old match $string\n";
+				}
+
+				$string = $s;
+				$both = 1;
+				last;
+			}
+
+			if ($string eq "") {
+				$string = $s;
+			}
+		}
+
 		if ($string ne "") {
+			if (!$both) {
+				# print STDERR "$tlid only on one side: $string\n";
+			}
+
 			print "1 0 0 setrgbcolor\n";
 			@pts = split(/ /, $string);
 
