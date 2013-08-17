@@ -84,6 +84,9 @@ while (<IN>) {
 
 	push @{$oldlat{$tlid}}, $endlat;
 	push @{$oldlon{$tlid}}, $endlon;
+
+	$name{$tlid} = "$dirp $name $type $dirs";
+	$name{$tlid} =~ s/ +/ /g;
 }
 close(IN);
 
@@ -157,26 +160,48 @@ while (<IN>) {
 
 for $tlid (keys(%oldlat)) {
 	if (!defined($newlat{$tlid})) {
-		print "only in old: $tlid\n";
+		print "only in old: $tlid $blockl{$tlid} and $blockr{$tlid}: $name{$tlid}\n";
 
-		print "left: $blockl{$tlid}\n";
+		@a1 = @{$newblocklat{$blockl{$tlid}}};
+		@o1 = @{$newblocklon{$blockl{$tlid}}};
 
-		@a = @{$newblocklat{$blockl{$tlid}}};
-		@o = @{$newblocklon{$blockl{$tlid}}};
+		@a2 = @{$newblocklat{$blockr{$tlid}}};
+		@o2 = @{$newblocklon{$blockr{$tlid}}};
 
-		for ($i = 0; $i <= $#a; $i++) {
-			print "$a[$i],$o[$i] ";
+		# In case the matching portion wraps around at the edge
+
+		@a1 = (@a1, @a1);
+		@o1 = (@o1, @o1);
+
+		@a2 = (@a2, @a2);
+		@o2 = (@o2, @o2);
+
+		print "sides $#a1 and $#a2\n";
+		$maxn = 0;
+
+		for ($pass = 0; $pass < 2; $pass++) {
+			for ($i = 0; $i <= $#a1; $i++) {
+				for ($j = 0; $j <= $#a2; $j++) {
+					for ($n = 0; $n + $j <= $#a2; $n++) {
+						# print "$a1[$i + $n],$o1[$i + $n] vs ";
+						# print "$a2[$j + $n],$o2[$j + $n]\n";
+
+						last if $a1[$i + $n] != $a2[$j + $n];
+						last if $o1[$i + $n] != $o2[$j + $n];
+					}
+
+					if ($n >= 2) {
+						print "matched $n at $i $j: ";
+						print "$a1[$i],$o1[$i] to $a1[$i + $n - 1],$o1[$i + $n - 1]\n";
+
+						$i += $n - 1;
+						$j += $n - 1;
+					}
+				}
+			}
+
+			@a2 = reverse(@a2);
+			@o2 = reverse(@o2);
 		}
-		print "\n";
-
-		print "right: $blockr{$tlid}\n";
-
-		@a = @{$newblocklat{$blockr{$tlid}}};
-		@o = @{$newblocklon{$blockr{$tlid}}};
-
-		for ($i = 0; $i <= $#a; $i++) {
-			print "$a[$i],$o[$i] ";
-		}
-		print "\n";
 	}
 }
