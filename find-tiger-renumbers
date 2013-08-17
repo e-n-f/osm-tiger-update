@@ -224,59 +224,45 @@ for $tlid (keys(%oldlat)) {
 		@a2 = @{$newblocklat{$blockr{$tlid}}};
 		@o2 = @{$newblocklon{$blockr{$tlid}}};
 
-		# In case the matching portion wraps around at the edge
+		$best = 9999999;
+		$string = "";
 
-		@a1 = (@a1, @a1);
-		@o1 = (@o1, @o1);
+		for ($pass = 0; $pass < 4; $pass++) {
+			if ($pass == 0) {
+				@a = (@a1, @a1);
+				@o = (@o1, @o1);
+			} elsif ($pass == 1) {
+				@a = reverse(@a1, @a1);
+				@o = reverse(@o1, @o1);
+			} elsif ($pass == 2) {
+				@a = (@a2, @a2);
+				@o = (@o2, @o2);
+			} elsif ($pass == 1) {
+				@a = reverse(@a2, @a2);
+				@o = reverse(@o2, @o2);
+			}
 
-		@a2 = (@a2, @a2);
-		@o2 = (@o2, @o2);
+			I:
+			for ($i = 0; $i <= $#a; $i++) {
+				if ($a[$i] == $startlat && $o[$i] == $startlon) {
+					for ($j = $i + 1; $j <= $#a; $j++) {
+						if ($a[$j] == $endlat && $o[$j] == $endlon) {
+							if ($j - $i < $best) {
+								$best = $j - $i;
 
-		print "sides $#a1 and $#a2\n";
-		$maxn = 0;
+								$string = "";
+								for ($k = $i; $k <= $j; $k++) {
+									$string .= "$a[$k],$o[$k] ";
+								}
+							}
 
-		for ($pass = 0; $pass < 2; $pass++) {
-			for ($i = 0; $i <= $#a1; $i++) {
-				for ($j = 0; $j <= $#a2; $j++) {
-					for ($n = 0; $n + $j <= $#a2; $n++) {
-						# print "$a1[$i + $n],$o1[$i + $n] vs ";
-						# print "$a2[$j + $n],$o2[$j + $n]\n";
-
-						last if $a1[$i + $n] != $a2[$j + $n];
-						last if $o1[$i + $n] != $o2[$j + $n];
-					}
-
-					if ($n >= 2) {
-						print "matched $n at $i $j: ";
-						print "$a1[$i],$o1[$i] ";
-						print "to $a1[$i + $n - 1],$o1[$i + $n - 1] ";
-
-						if ("$a1[$i],$o1[$i]" eq "$startlat,$startlon") {
-							print "yes1 ";
+							next I;
 						}
-						if ("$a1[$i],$o1[$i]" eq "$endlat,$endlon") {
-							print "yes1 ";
-						}
-
-						if ("$a1[$i + $n - 1],$o1[$i + $n - 1]" eq "$startlat,$startlon") {
-							print "yes2 ";
-						}
-						if ("$a1[$i + $n - 1],$o1[$i + $n - 1]" eq "$endlat,$endlon") {
-							print "yes2 ";
-						}
-
-						print "\n";
-
-						$i += $n - 1;
-						$j += $n - 1;
 					}
 				}
 			}
-
-			@a2 = reverse(@a2);
-			@o2 = reverse(@o2);
 		}
 
-		print "\n";
+		print "-> $string\n\n";
 	}
 }
