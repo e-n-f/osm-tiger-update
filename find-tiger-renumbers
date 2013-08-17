@@ -85,6 +85,9 @@ while (<IN>) {
 	push @{$oldlat{$tlid}}, $endlat;
 	push @{$oldlon{$tlid}}, $endlon;
 
+	push @{$tlid_starts{"$startlat,$startlon"}}, $tlid;
+	push @{$tlid_ends{"$endlat,$endlon"}}, $tlid;
+
 	$name{$tlid} = "$dirp $name $type $dirs";
 	$name{$tlid} =~ s/ +/ /g;
 }
@@ -162,6 +165,59 @@ for $tlid (keys(%oldlat)) {
 	if (!defined($newlat{$tlid})) {
 		print "only in old: $tlid $blockl{$tlid} and $blockr{$tlid}: $name{$tlid}\n";
 
+		@oldlat = @{$oldlat{$tlid}};
+		@oldlon = @{$oldlon{$tlid}};
+
+		$start = "$oldlat[0],$oldlon[0]";
+		$end = "$oldlat[$#oldlat],$oldlon[$#oldlon]";
+
+		print "which used to be $start to $end\n";
+
+		print "at $start started @{$tlid_starts{$start}} and ended @{$tlid_ends{$start}}\n";
+		print "at $end started @{$tlid_starts{$end}} and ended @{$tlid_ends{$end}}\n";
+
+		$startlat = $startlon = $endlat = $endlon = 0;
+
+		for $tlid (@{$tlid_starts{$start}}) {
+			@a = @{$newlat{$tlid}};
+			@o = @{$newlon{$tlid}};
+			if ($#a >= 0) {
+				$startlat = $a[0];
+				$startlon = $o[0];
+			}
+		}
+
+		for $tlid (@{$tlid_ends{$start}}) {
+			@a = @{$newlat{$tlid}};
+			@o = @{$newlon{$tlid}};
+			if ($#a >= 0) {
+				$startlat = $a[$#a];
+				$startlon = $o[$#o];
+			}
+		}
+
+		print "which means $start is now $startlat,$startlon\n";
+
+		for $tlid (@{$tlid_starts{$end}}) {
+			@a = @{$newlat{$tlid}};
+			@o = @{$newlon{$tlid}};
+			if ($#a >= 0) {
+				$endlat = $a[0];
+				$endlon = $o[0];
+			}
+		}
+
+		for $tlid (@{$tlid_ends{$end}}) {
+			@a = @{$newlat{$tlid}};
+			@o = @{$newlon{$tlid}};
+			if ($#a >= 0) {
+				$endlat = $a[$#a];
+				$endlon = $o[$#o];
+			}
+		}
+
+		print "and $end is now $endlat,$endlon\n";
+
 		@a1 = @{$newblocklat{$blockl{$tlid}}};
 		@o1 = @{$newblocklon{$blockl{$tlid}}};
 
@@ -192,7 +248,24 @@ for $tlid (keys(%oldlat)) {
 
 					if ($n >= 2) {
 						print "matched $n at $i $j: ";
-						print "$a1[$i],$o1[$i] to $a1[$i + $n - 1],$o1[$i + $n - 1]\n";
+						print "$a1[$i],$o1[$i] ";
+						print "to $a1[$i + $n - 1],$o1[$i + $n - 1] ";
+
+						if ("$a1[$i],$o1[$i]" eq "$startlat,$startlon") {
+							print "yes1 ";
+						}
+						if ("$a1[$i],$o1[$i]" eq "$endlat,$endlon") {
+							print "yes1 ";
+						}
+
+						if ("$a1[$i + $n - 1],$o1[$i + $n - 1]" eq "$startlat,$startlon") {
+							print "yes2 ";
+						}
+						if ("$a1[$i + $n - 1],$o1[$i + $n - 1]" eq "$endlat,$endlon") {
+							print "yes2 ";
+						}
+
+						print "\n";
 
 						$i += $n - 1;
 						$j += $n - 1;
@@ -203,5 +276,7 @@ for $tlid (keys(%oldlat)) {
 			@a2 = reverse(@a2);
 			@o2 = reverse(@o2);
 		}
+
+		print "\n";
 	}
 }
