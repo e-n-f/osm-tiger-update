@@ -1,0 +1,182 @@
+#!/usr/bin/perl
+
+use POSIX;
+use XML::Parser;
+
+binmode(STDOUT, ":utf8");
+
+if ($#ARGV < 0) {
+	$county = "18011";
+} else {
+	$county = $ARGV[0];
+	
+}
+
+$pi = 4 * atan2(1, 1);
+$foot = .00000274;
+
+%county_number_map = (
+	"01" => "AL", "02" => "AK", "04" => "AZ", "05" => "AR", "06" => "CA",
+	"08" => "CO", "09" => "CT", "10" => "DE", "11" => "DC", "12" => "FL",
+	"13" => "GA", "15" => "HI", "16" => "ID", "17" => "IL", "18" => "IN",
+	"19" => "IA", "20" => "KS", "21" => "KY", "22" => "LA", "23" => "ME",
+	"24" => "MD", "25" => "MA", "26" => "MI", "27" => "MN", "28" => "MS",
+	"29" => "MO", "30" => "MT", "31" => "NE", "32" => "NV", "33" => "NH",
+	"34" => "NJ", "35" => "NM", "36" => "NY", "37" => "NC", "38" => "ND",
+	"39" => "OH", "40" => "OK", "41" => "OR", "42" => "PA", "44" => "RI",
+	"45" => "SC", "46" => "SD", "47" => "TN", "48" => "TX", "49" => "UT",
+	"50" => "VT", "51" => "VA", "53" => "WA", "54" => "WV", "55" => "WI",
+	"56" => "WY", "60" => "AS", "66" => "GU", "69" => "MP", "72" => "PR",
+	"78" => "VI",
+);
+
+mkdir "tiger";
+
+$state = $county_number_map{substr($county, 0, 2)};
+$file = "TGR$county.ZIP";
+
+unless (-f "tiger/$file") {
+	system "curl -o tiger/$file http://www2.census.gov/geo/tiger/tiger2006se/$state/$file";
+}
+
+open(IN, "unzip -p tiger/$file TGR$county.RT2 |");
+while (<IN>) {
+	chomp;
+	$tlid = substr($_, 5, 10);
+	$tlid =~ s/^ *//;
+
+	for ($i = 18; $i < 208; $i += 19) {
+		$lon = substr($_, $i, 10) / 1000000;
+		$lat = substr($_, $i + 10, 9) / 1000000;
+
+		if ($lat != 0) {
+			push @{$oldlat{$tlid}}, $lat;
+			push @{$oldlon{$tlid}}, $lon;
+		}
+	}
+}
+close(IN);
+
+open(IN, "unzip -p tiger/$file TGR$county.RT1 |");
+while (<IN>) {
+	chomp;
+	$tlid = substr($_, 5, 10);
+	$tlid =~ s/^ *//;
+
+	$startlon = substr($_, 190, 10) / 1000000;
+	$startlat = substr($_, 200, 9) / 1000000;
+	$endlon = substr($_, 209, 10) / 1000000;
+	$endlat = substr($_, 219, 9) / 1000000;
+
+	$dirp = substr($_, 17, 2);
+	$name = substr($_, 19, 30);
+	$type = substr($_, 49, 4);
+	$dirs = substr($_, 53, 2);
+
+	$blockl = substr($_, 130, 2) . substr($_, 134, 3) . substr($_, 170, 6) . substr($_, 182, 4);
+	$blockr = substr($_, 132, 2) . substr($_, 137, 3) . substr($_, 176, 6) . substr($_, 186, 4);
+
+	$blockl{$tlid} = $blockl;
+	$blockr{$tlid} = $blockr;
+
+	unshift @{$oldlat{$tlid}}, $startlat;
+	unshift @{$oldlon{$tlid}}, $startlon;
+
+	push @{$oldlat{$tlid}}, $endlat;
+	push @{$oldlon{$tlid}}, $endlon;
+}
+close(IN);
+
+print STDERR "read county $county\n";
+
+$file = "tl_2010_${county}_edges.zip";
+unless (-f "tiger/$file") {
+	system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGER2010/EDGES/tl_2010_${county}_edges.zip";
+}
+
+open(IN, "java shpcat tiger/$file |");
+while (<IN>) {
+	chomp;
+
+	($state, $cty, $tlid, $tfidl, $tfidr, $mtfcc, $fullname, $smid, $addrls, $addrle, $addrrs, $addrre) = split(/\|/);
+	$tlid =~ s/^ *//;
+	next unless $tlid =~ /^[0-9]/;
+
+	s/.*polyline //;
+	@points = split(/ /, $_);
+
+	for $p (@points) {
+		($lon, $lat) = split(/,/, $p);
+		push @{$newlat{$tlid}}, $lat;
+		push @{$newlon{$tlid}}, $lon;
+
+		if ($lat < $minlat) {
+			$minlat = $lat;
+		}
+		if ($lon < $minlon) {
+			$minlon = $lon;
+		}
+		if ($lat > $maxlat) {
+			$maxlat = $lat;
+		}
+		if ($lon > $maxlon) {
+			$maxlon = $lon;
+		}
+	}
+
+	($startlon, $startlat) = split(/,/, $points[0]);
+	($endlon, $endlat) = split(/,/, $points[$#points]);
+}
+close(IN);
+
+$file = "tl_2010_${county}_tabblock00.zip";
+unless (-f "tiger/$file") {
+	system "curl -o tiger/$file http://www2.census.gov/geo/tiger/TIGER2010/TABBLOCK/2000/tl_2010_${county}_tabblock00.zip";
+}
+
+open(IN, "java shpcat tiger/$file |");
+while (<IN>) {
+	chomp;
+
+	($state, $cty, $tract, $block) = split(/\|/);
+	next unless $block =~ /^[0-9]/;
+
+	# print "$state$cty$tract$block\n";
+
+	s/.*polygon //;
+	@points = split(/ /, $_);
+
+	for $p (@points) {
+		if ($p ne ";") {
+			($lon, $lat) = split(/,/, $p);
+			push @{$newblocklat{"$state$cty$tract$block"}}, $lat;
+			push @{$newblocklon{"$state$cty$tract$block"}}, $lon;
+		}
+	}
+}
+
+for $tlid (keys(%oldlat)) {
+	if (!defined($newlat{$tlid})) {
+		print "only in old: $tlid\n";
+
+		print "left: $blockl{$tlid}\n";
+
+		@a = @{$newblocklat{$blockl{$tlid}}};
+		@o = @{$newblocklon{$blockl{$tlid}}};
+
+		for ($i = 0; $i <= $#a; $i++) {
+			print "$a[$i],$o[$i] ";
+		}
+		print "\n";
+
+		print "right: $blockr{$tlid}\n";
+
+		@a = @{$newblocklat{$blockr{$tlid}}};
+		@o = @{$newblocklon{$blockr{$tlid}}};
+
+		for ($i = 0; $i <= $#a; $i++) {
+			print "$a[$i],$o[$i] ";
+		}
+		print "\n";
+	}
+}
