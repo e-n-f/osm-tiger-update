@@ -73,6 +73,9 @@ while (<IN>) {
 	$endlon = substr($_, 209, 10) / 1000000;
 	$endlat = substr($_, 219, 9) / 1000000;
 
+	$cfcc = substr($_, 55, 3);
+	$cfcc{$tlid} = $cfcc;
+
 	$dirp = substr($_, 17, 2);
 	$name = substr($_, 19, 30);
 	$type = substr($_, 49, 4);
@@ -185,6 +188,8 @@ $maxlon = $lon + ($dimension / $rat / 2);
 printf("%.3f setlinewidth\n", 20 * $foot * 612 / ($maxlat - $minlat));
 
 for $tlid (keys(%oldlat)) {
+	next unless $cfcc{$tlid} =~ /^A/ || $cfcc{$tlid} =~ /^B/;  # roads, railroads
+
 	@oldlat = @{$oldlat{$tlid}};
 	@oldlon = @{$oldlon{$tlid}};
 
@@ -287,8 +292,14 @@ for $tlid (keys(%oldlat)) {
 				if ($a[$i] == $startlat && $o[$i] == $startlon) {
 					for ($j = $i + 1; $j <= $#a; $j++) {
 						if ($a[$j] == $endlat && $o[$j] == $endlon) {
-							if ($j - $i < $best) {
-								$best = $j - $i;
+							$d = 0;
+							for ($k = $i; $k < $j; $k++) {
+								$latd = $a[$k + 1] - $a[$k];
+								$lond = $o[$k + 1] - $o[$k]; # XXX rat
+								$d += sqrt($latd * $latd + $lond * $lond);
+							}
+							if ($d < $best) {
+								$best = $d;
 
 								$string = "";
 								for ($k = $i; $k <= $j; $k++) {
