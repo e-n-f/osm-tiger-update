@@ -9,7 +9,6 @@ if ($#ARGV < 0) {
 	$county = "18011";
 } else {
 	$county = $ARGV[0];
-	
 }
 
 $pi = 4 * atan2(1, 1);
@@ -42,6 +41,22 @@ $file = "TGR$county.ZIP";
 
 unless (-f "tiger/$file") {
 	system "curl -o tiger/$file http://www2.census.gov/geo/tiger/tiger2006se/$state/$file";
+}
+
+open(IN, "unzip -c tiger/$file TGR$county.RTI |");
+while (<IN>) {
+	chomp;
+
+	$tlid = substr($_, 10, 10);
+	$start = substr($_, 20, 10);
+	$end = substr($_, 30, 10);
+
+	$tlid =~ s/^ *//;
+	$start =~ s/^ *//;
+	$end =~ s/^ *//;
+
+	$old_start_node{$tlid} = $start;
+	$old_end_node{$tlid} = $end;
 }
 
 open(IN, "unzip -p tiger/$file TGR$county.RT2 |");
@@ -112,9 +127,18 @@ open(IN, "java shpcat tiger/$file |");
 while (<IN>) {
 	chomp;
 
-	($state, $cty, $tlid, $tfidl, $tfidr, $mtfcc, $fullname, $smid, $addrls, $addrle, $addrrs, $addrre) = split(/\|/);
+	($state, $cty, $tlid, $tfidl, $tfidr, $mtfcc, $fullname, $smid, $addrls, $addrle, $addrrs, $addrre, $zipl, $zipr, $featcat, $hydroflg, $rail, $road, $off, $pass, $div, $extt, $tt, $decked, $artp, $pers, $gcse, $offl, $offr, $tnidf, $tnidt) = split(/\|/);
 	$tlid =~ s/^ *//;
 	next unless $tlid =~ /^[0-9]/;
+
+	$tnidf =~ s/^ *//;
+	$tnidt =~ s/^ *//;
+
+	$new_start_node{$tlid} = $tnidf;
+	$new_end_node{$tlid} = $tnidt;
+
+	push @{$tlids_starting_with{$tnidf}}, $tlid;
+	push @{$tlids_ending_with{$tnidt}}, $tlid;
 
 	s/.*polyline //;
 	@points = split(/ /, $_);
@@ -285,6 +309,55 @@ sub find_intersection {
 	}
 }
 
+sub traverse {
+	my ($start, $end, $depth) = @_;
+
+	if ($depth >= 7) {
+		return ();
+	}
+
+	my @ret = ();
+	my $tlid;
+
+	my @tlids1 = @{$tlids_starting_with{$start}};
+	for $tlid (@tlids1) {
+		next if $used{$tlid};
+		#next if defined($oldlat{$tlid});
+		$used{$tlid} = 1;
+
+		if ($new_end_node{$tlid} eq $end) {
+			push @ret, "$tlid";
+		} else {
+			my @links = traverse($new_end_node{$tlid}, $end, $depth + 1);
+			for (@links) {
+				push @ret, "$tlid $_";
+			}
+		}
+
+		$used{$tlid} = 0;
+	}
+
+	my @tlids2 = @{$tlids_ending_with{$start}};
+	for $tlid (@tlids2) {
+		next if $used{$tlid};
+		#next if defined($oldlat{$tlid});
+		$used{$tlid} = 1;
+
+		if ($new_start_node{$tlid} eq $end) {
+			push @ret, "-$tlid";
+		} else {
+			my @links = traverse($new_start_node{$tlid}, $end, $depth + 1);
+			for (@links) {
+				push @ret, "-$tlid $_";
+			}
+		}
+
+		$used{$tlid} = 0;
+	}
+
+	return @ret;
+}
+
 for $tlid (keys(%oldlat)) {
 	# next unless $cfcc{$tlid} =~ /^A/ || $cfcc{$tlid} =~ /^B/;  # roads, railroads
 
@@ -309,6 +382,50 @@ for $tlid (keys(%oldlat)) {
 	print "stroke\n";
 
 	if (!defined($newlat{$tlid})) {
+		$start = $old_start_node{$tlid};
+		$end = $old_end_node{$tlid};
+
+		# print "$tlid goes from node $start to $end\n";
+
+		@from = @{$tlids_starting_with{$start}};
+		@to = @{$tlids_ending_with{$end}};
+
+		# print "that's @from to @to\n";
+
+		@path = sort { length($a) <=> length($b) } traverse($start, $end, 0);
+
+		if ($#path >= 0) {
+			@tlids = split(/ /, $path[0]);
+
+			for $tlid (@tlids) {
+				if ($tlid < 0) {
+					$tlid = -$tlid;
+				}
+
+				@newlat = @{$newlat{$tlid}};
+				@newlon = @{$newlon{$tlid}};
+
+				print "1 0 0 setrgbcolor\n";
+
+				for ($i = 0; $i <= $#newlat; $i++) {
+					printf("%.3f %.3f ",
+						($newlon[$i] - $minlon) * 612 / ($maxlon - $minlon),
+						($newlat[$i] - $minlat) * 612 / ($maxlat - $minlat),
+					);
+
+					if ($i == 0) {
+						print "moveto ";
+					} else {
+						print "lineto ";
+					}
+				}
+
+				print "stroke\n";
+			}
+
+			next;
+		}
+
 		# print "only in old: $tlid $blockl{$tlid} and $blockr{$tlid}: $name{$tlid}\n";
 
 		$start = "$oldlat[0],$oldlon[0]";
@@ -479,7 +596,7 @@ for $tlid (keys(%oldlat)) {
 				# print STDERR "$tlid only on one side: $string\n";
 			}
 
-			print "1 0 0 setrgbcolor\n";
+			print "1 .5 0 setrgbcolor\n";
 			@pts = split(/ /, $string);
 
 			for ($i = 0; $i <= $#pts; $i++) {
