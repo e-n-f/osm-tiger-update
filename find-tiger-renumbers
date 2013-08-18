@@ -279,9 +279,9 @@ sub find_intersection {
 	my @survive = keys(%common);
 
 	if ($#survive == 0) {
-		return split(/,/, $survive[0]);
+		return $survive[0];
 	} else {
-		return (0, 0);
+		return "fail";
 	}
 }
 
@@ -319,14 +319,14 @@ for $tlid (keys(%oldlat)) {
 		# print "at $start started @{$tlid_starts{$start}} and ended @{$tlid_ends{$start}}\n";
 		# print "at $end started @{$tlid_starts{$end}} and ended @{$tlid_ends{$end}}\n";
 
-		$startlat = $startlon = $endlat = $endlon = 0;
+		%start = ();
+		%end = ();
 
 		for $tlid (@{$tlid_starts{$start}}) {
 			@a = @{$newlat{$tlid}};
 			@o = @{$newlon{$tlid}};
 			if ($#a >= 0) {
-				$startlat = $a[0];
-				$startlon = $o[0];
+				$start{"$a[0],$o[0]"} = 1;
 			}
 		}
 
@@ -334,20 +334,19 @@ for $tlid (keys(%oldlat)) {
 			@a = @{$newlat{$tlid}};
 			@o = @{$newlon{$tlid}};
 			if ($#a >= 0) {
-				$startlat = $a[$#a];
-				$startlon = $o[$#o];
+				$start{"$a[$#a],$o[$#o]"} = 1;
 			}
 		}
 
-		if ($startlat == 0) {
+		if (1) {
 			%shared = ();
 			for (@{$tlid_starts{$start}}, @{$tlid_ends{$start}}) {
 				$shared{$_} = 1;
 			}
 			@shared = keys(%shared);
 			$n = $#shared + 1;
-			print STDERR "$n tlids share $start\n";
-			($startlat, $startlon) = find_intersection(@shared);
+			# print STDERR "$n tlids share $start\n";
+			$start{find_intersection(@shared)} = 1;
 		}
 
 		# print "which means $start is now $startlat,$startlon\n";
@@ -356,8 +355,7 @@ for $tlid (keys(%oldlat)) {
 			@a = @{$newlat{$tlid}};
 			@o = @{$newlon{$tlid}};
 			if ($#a >= 0) {
-				$endlat = $a[0];
-				$endlon = $o[0];
+				$end{"$a[0],$o[0]"} = 1;
 			}
 		}
 
@@ -365,20 +363,19 @@ for $tlid (keys(%oldlat)) {
 			@a = @{$newlat{$tlid}};
 			@o = @{$newlon{$tlid}};
 			if ($#a >= 0) {
-				$endlat = $a[$#a];
-				$endlon = $o[$#o];
+				$end{"$a[$#a],$o[$#o]"} = 1;
 			}
 		}
 
-		if ($endlat == 0) {
+		if (1) {
 			%shared = ();
 			for (@{$tlid_starts{$end}}, @{$tlid_ends{$end}}) {
 				$shared{$_} = 1;
 			}
 			@shared = keys(%shared);
 			$n = $#shared + 1;
-			print STDERR "$n tlids share $end\n";
-			($endlat, $endlon) = find_intersection(@shared);
+			# print STDERR "$n tlids share $end\n";
+			$end{find_intersection(@shared)} = 1;
 		}
 
 		# print "and $end is now $endlat,$endlon\n";
@@ -386,54 +383,66 @@ for $tlid (keys(%oldlat)) {
 		%found = ();
 		%len = ();
 
-		for $s1 (keys(%{$newblocklat{$blockl{$tlid}}})) {
-			for $s2 (keys(%{$newblocklat{$blockr{$tlid}}})) {
-				@a1 = @{$newblocklat{$blockl{$tlid}}{$s1}};
-				@o1 = @{$newblocklon{$blockl{$tlid}}{$s1}};
+		delete $start{'fail'};
+		delete $end{'fail'};
 
-				@a2 = @{$newblocklat{$blockr{$tlid}}{$s2}};
-				@o2 = @{$newblocklon{$blockr{$tlid}}{$s2}};
+		for $st (keys(%start)) {
+			for $en (keys(%end)) {
+				($startlat,$startlon) = split(/,/, $st);
+				($endlat,$endlon) = split(/,/, $en);
 
-				for ($pass = 0; $pass < 4; $pass++) {
-					if ($pass == 0) {
-						@a = (@a1, @a1);
-						@o = (@o1, @o1);
-						$in = "left";
-					} elsif ($pass == 1) {
-						@a = reverse(@a1, @a1);
-						@o = reverse(@o1, @o1);
-						$in = "left";
-					} elsif ($pass == 2) {
-						@a = (@a2, @a2);
-						@o = (@o2, @o2);
-						$in = "right";
-					} elsif ($pass == 1) {
-						@a = reverse(@a2, @a2);
-						@o = reverse(@o2, @o2);
-						$in = "right";
-					}
+				print STDERR "looking for $st to $en for $tlid\n";
 
-					I:
-					for ($i = 0; $i <= $#a; $i++) {
-						if ($a[$i] == $startlat && $o[$i] == $startlon) {
-							for ($j = $i + 1; $j <= $#a; $j++) {
-								if ($a[$j] == $endlat && $o[$j] == $endlon) {
-									$d = 0;
-									for ($k = $i; $k < $j; $k++) {
-										$latd = $a[$k + 1] - $a[$k];
-										$lond = $o[$k + 1] - $o[$k]; # XXX rat
-										$d += sqrt($latd * $latd + $lond * $lond);
+				for $s1 (keys(%{$newblocklat{$blockl{$tlid}}})) {
+					for $s2 (keys(%{$newblocklat{$blockr{$tlid}}})) {
+						@a1 = @{$newblocklat{$blockl{$tlid}}{$s1}};
+						@o1 = @{$newblocklon{$blockl{$tlid}}{$s1}};
+
+						@a2 = @{$newblocklat{$blockr{$tlid}}{$s2}};
+						@o2 = @{$newblocklon{$blockr{$tlid}}{$s2}};
+
+						for ($pass = 0; $pass < 4; $pass++) {
+							if ($pass == 0) {
+								@a = (@a1, @a1);
+								@o = (@o1, @o1);
+								$in = "left";
+							} elsif ($pass == 1) {
+								@a = reverse(@a1, @a1);
+								@o = reverse(@o1, @o1);
+								$in = "left";
+							} elsif ($pass == 2) {
+								@a = (@a2, @a2);
+								@o = (@o2, @o2);
+								$in = "right";
+							} elsif ($pass == 1) {
+								@a = reverse(@a2, @a2);
+								@o = reverse(@o2, @o2);
+								$in = "right";
+							}
+
+							I:
+							for ($i = 0; $i <= $#a; $i++) {
+								if ($a[$i] == $startlat && $o[$i] == $startlon) {
+									for ($j = $i + 1; $j <= $#a; $j++) {
+										if ($a[$j] == $endlat && $o[$j] == $endlon) {
+											$d = 0;
+											for ($k = $i; $k < $j; $k++) {
+												$latd = $a[$k + 1] - $a[$k];
+												$lond = $o[$k + 1] - $o[$k]; # XXX rat
+												$d += sqrt($latd * $latd + $lond * $lond);
+											}
+
+											$string = "";
+											for ($k = $i; $k <= $j; $k++) {
+												$string .= "$a[$k],$o[$k] ";
+											}
+
+											$found{$string}{$in} = 1;
+											$len{$string} = $d;
+
+											next I;
+										}
 									}
-
-									$string = "";
-									for ($k = $i; $k <= $j; $k++) {
-										$string .= "$a[$k],$o[$k] ";
-									}
-
-									$found{$string}{$in} = 1;
-									$len{$string} = $d;
-
-									next I;
 								}
 							}
 						}
