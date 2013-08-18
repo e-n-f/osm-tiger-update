@@ -386,12 +386,15 @@ for $tlid (keys(%oldlat)) {
 		delete $start{'fail'};
 		delete $end{'fail'};
 
+		@start = keys(%start);
+		@end = keys(%end);
+
 		for $st (keys(%start)) {
 			for $en (keys(%end)) {
 				($startlat,$startlon) = split(/,/, $st);
 				($endlat,$endlon) = split(/,/, $en);
 
-				print STDERR "looking for $st to $en for $tlid\n";
+				# print STDERR "looking for $st to $en for $tlid\n";
 
 				for $s1 (keys(%{$newblocklat{$blockl{$tlid}}})) {
 					for $s2 (keys(%{$newblocklat{$blockr{$tlid}}})) {
@@ -407,16 +410,16 @@ for $tlid (keys(%oldlat)) {
 								@o = (@o1, @o1);
 								$in = "left";
 							} elsif ($pass == 1) {
-								@a = reverse(@a1, @a1);
-								@o = reverse(@o1, @o1);
+								@a = reverse((@a1, @a1));
+								@o = reverse((@o1, @o1));
 								$in = "left";
 							} elsif ($pass == 2) {
 								@a = (@a2, @a2);
 								@o = (@o2, @o2);
 								$in = "right";
-							} elsif ($pass == 1) {
-								@a = reverse(@a2, @a2);
-								@o = reverse(@o2, @o2);
+							} elsif ($pass == 3) {
+								@a = reverse((@a2, @a2));
+								@o = reverse((@o2, @o2));
 								$in = "right";
 							}
 
@@ -495,6 +498,10 @@ for $tlid (keys(%oldlat)) {
 			}
 
 			print "stroke\n";
+		} else {
+			if ($#start >= 0 && $#end >= 0) {
+				print STDERR "couldn't find a match for $tlid $start to $end like $start[0] to $end[0]\n";
+			}
 		}
 
 		# print "-> $string\n\n";
